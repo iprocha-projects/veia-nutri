@@ -1,0 +1,225 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  NUTRITIONIST
+  CLIENT
+}
+
+enum ClientStatus {
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+enum MealPlanStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum GoalStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(CLIENT)
+  name         String
+  phone        String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  professional  Professional?
+  client        Client?
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Professional {
+  id                       String   @id @default(uuid())
+  userId                   String   @unique @map("user_id")
+  professionalRegistration String?  @map("professional_registration")
+  createdAt                DateTime @default(now()) @map("created_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clients Client[]
+
+  @@map("professionals")
+}
+
+model Client {
+  id             String       @id @default(uuid())
+  professionalId String       @map("professional_id")
+  userId         String       @unique @map("user_id")
+  birthDate      DateTime?    @map("birth_date")
+  status         ClientStatus @default(ACTIVE)
+  notes          String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  professional   Professional    @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealPlans      MealPlan[]
+  mealLogs       MealLog[]
+  measurements   Measurement[]
+  progressPhotos ProgressPhoto[]
+  checkins       Checkin[]
+  goals          Goal[]
+  aiSummaries    AISummary[]
+
+  @@map("clients")
+}
+
+model MealPlan {
+  id        String         @id @default(uuid())
+  clientId  String         @map("client_id")
+  title     String
+  status    MealPlanStatus @default(DRAFT)
+  startsAt  DateTime       @default(now()) @map("starts_at")
+  endsAt    DateTime?      @map("ends_at")
+  version   Int            @default(1)
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  meals  Meal[]
+
+  @@map("meal_plans")
+}
+
+model Meal {
+  id           String   @id @default(uuid())
+  mealPlanId   String   @map("meal_plan_id")
+  name         String
+  time         String
+  instructions String?
+  sortOrder    Int      @default(0) @map("sort_order")
+
+  mealPlan Meal       @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  items    MealItem[]
+  mealLogs MealLog[]
+
+  @@map("meals")
+}
+
+model MealItem {
+  id       String  @id @default(uuid())
+  mealId   String  @map("meal_id")
+  foodName String  @map("food_name")
+  quantity Float
+  unit     String
+  notes    String?
+
+  meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  @@map("meal_items")
+}
+
+model MealLog {
+  id       String   @id @default(uuid())
+  clientId String   @map("client_id")
+  mealId   String?  @map("meal_id")
+  loggedAt DateTime @default(now()) @map("logged_at")
+  notes    String?
+  photoUrl String?  @map("photo_url")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  meal   Meal?  @relation(fields: [mealId], references: [id], onDelete: SetNull)
+
+  @@map("meal_logs")
+}
+
+model Measurement {
+  id         String   @id @default(uuid())
+  clientId   String   @map("client_id")
+  measuredAt DateTime @default(now()) @map("measured_at")
+  weightKg   Float    @map("weight_kg")
+  waistCm    Float?   @map("waist_cm")
+  hipCm      Float?   @map("hip_cm")
+  armCm      Float?   @map("arm_cm")
+  thighCm    Float?   @map("thigh_cm")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("measurements")
+}
+
+model ProgressPhoto {
+  id         String   @id @default(uuid())
+  clientId   String   @map("client_id")
+  takenAt    DateTime @default(now()) @map("taken_at")
+  photoUrl   String   @map("photo_url")
+  category   String   @default("front")
+  visibility String   @default("private")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("progress_photos")
+}
+
+model Checkin {
+  id              String   @id @default(uuid())
+  clientId        String   @map("client_id")
+  submittedAt     DateTime @default(now()) @map("submitted_at")
+  hungerScore     Int      @map("hunger_score")
+  energyScore     Int      @map("energy_score")
+  difficultyScore Int      @map("difficulty_score")
+  notes           String?
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("checkins")
+}
+
+model Goal {
+  id          String     @id @default(uuid())
+  clientId    String     @map("client_id")
+  title       String
+  targetValue Float      @map("target_value")
+  unit        String
+  startsAt    DateTime   @default(now()) @map("starts_at")
+  endsAt      DateTime?  @map("ends_at")
+  status      GoalStatus @default(IN_PROGRESS)
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("goals")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  type      String
+  title     String
+  body      String
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model AISummary {
+  id            String   @id @default(uuid())
+  clientId      String   @map("client_id")
+  periodStart   DateTime @map("period_start")
+  periodEnd     DateTime @map("period_end")
+  inputSnapshot String   @map("input_snapshot")
+  summary       String
+  model         String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("ai_summaries")
+}
