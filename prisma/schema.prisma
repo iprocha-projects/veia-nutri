@@ -5,9 +5,11 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 enum Role {
+  ADMIN
   NUTRITIONIST
   CLIENT
 }
@@ -37,6 +39,7 @@ model User {
   name         String
   phone        String?
   avatarUrl    String?
+  description  String?
   createdAt    DateTime @default(now()) @map("created_at")
 
   professional  Professional?
@@ -104,7 +107,7 @@ model Meal {
   instructions String?
   sortOrder    Int      @default(0) @map("sort_order")
 
-  mealPlan Meal       @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  mealPlan MealPlan       @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
   items    MealItem[]
   mealLogs MealLog[]
 
