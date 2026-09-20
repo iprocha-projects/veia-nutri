@@ -55,8 +55,9 @@ model Professional {
   professionalRegistration String?  @map("professional_registration")
   createdAt                DateTime @default(now()) @map("created_at")
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clients Client[]
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clients           Client[]
+  mealPlanTemplates MealPlanTemplate[]
 
   @@map("professionals")
 }
@@ -242,4 +243,20 @@ model AISummary {
 
   @@index([clientId])
   @@map("ai_summaries")
+}
+
+model MealPlanTemplate {
+  id             String       @id @default(uuid())
+  professionalId String       @map("professional_id")
+  title          String
+  category       String?
+  description    String?
+  meals          Json
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@index([professionalId])
+  @@map("meal_plan_templates")
 }

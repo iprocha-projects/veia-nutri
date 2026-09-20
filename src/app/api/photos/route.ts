@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
+import { createNotification } from '@/lib/notifications'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 
@@ -70,6 +71,31 @@ export async function POST(req: Request) {
         visibility: 'private',
       },
     })
+
+    // Notify professional if logged by client
+    if (session.role === 'CLIENT') {
+      const clientInfo = await prisma.client.findUnique({
+        where: { id: targetClientId },
+        include: { user: true, professional: true },
+      })
+
+      if (clientInfo?.professional?.userId) {
+        const catLabels: Record<string, string> = {
+          front: 'Frente',
+          back: 'Costas',
+          side: 'Lateral',
+        }
+        const label = catLabels[category] || category
+
+        await createNotification({
+          userId: clientInfo.professional.userId,
+          type: 'PHOTO',
+          title: '📸 Nova Foto de Evolução',
+          message: `${clientInfo.user.name} adicionou uma nova foto de evolução (${label}).`,
+          link: `/dashboard/clients/${targetClientId}?tab=evolution`,
+        })
+      }
+    }
 
     return NextResponse.json(progressPhoto, { status: 201 })
   } catch (error) {

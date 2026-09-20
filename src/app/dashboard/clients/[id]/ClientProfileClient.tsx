@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import {
   Calendar,
   Sparkles,
@@ -25,11 +26,20 @@ import { AISummaryTab } from './components/AISummaryTab'
 
 export function ClientProfileClient({ client: initialClient }: { client: any }) {
   const toast = useToast()
+  const searchParams = useSearchParams()
   const [client, setClient] = useState(initialClient)
   const [activeTab, setActiveTab] = useState<'overview' | 'plan' | 'logs' | 'evolution' | 'checkins' | 'summary'>('overview')
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [currentSummary, setCurrentSummary] = useState<any>(client.aiSummaries?.[0] || null)
   const [isEditingProfile, setIsEditingProfile] = useState(false)
+
+  // Sync tab from URL if present (e.g. from notification click)
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam && ['overview', 'plan', 'logs', 'evolution', 'checkins', 'summary'].includes(tabParam)) {
+      setActiveTab(tabParam as any)
+    }
+  }, [searchParams])
 
   const activePlan = client.mealPlans?.find((p: any) => p.status === 'PUBLISHED') || client.mealPlans?.[0]
 
@@ -175,7 +185,11 @@ export function ClientProfileClient({ client: initialClient }: { client: any }) 
         )}
 
         {activeTab === 'plan' && (
-          <MealPlanTab clientId={client.id} activePlan={activePlan} />
+          <MealPlanTab
+            clientId={client.id}
+            activePlan={activePlan}
+            mealPlans={client.mealPlans || []}
+          />
         )}
 
         {activeTab === 'logs' && (

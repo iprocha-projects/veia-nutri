@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
+import { createNotification } from '@/lib/notifications'
 
 export async function PUT(
  req: Request,
@@ -40,6 +41,17 @@ export async function PUT(
  },
  include: { user: true },
  })
+
+ // Notify client if notes updated
+ if (existingClient.userId && notes && notes !== existingClient.notes) {
+ await createNotification({
+ userId: existingClient.userId,
+ type: 'PROFILE',
+ title: '📋 Prontuário Atualizado',
+ message: 'Seu nutricionista atualizou as observações e diretrizes do seu acompanhamento clínico.',
+ link: '/client',
+ })
+ }
 
  return NextResponse.json(updatedClient)
  } catch (error) {

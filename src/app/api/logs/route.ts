@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
+import { createNotification } from '@/lib/notifications'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 
@@ -75,6 +76,26 @@ export async function POST(req: Request) {
       },
       include: { meal: true },
     })
+
+    // Notify professional if logged by client
+    if (session.role === 'CLIENT') {
+      const clientInfo = await prisma.client.findUnique({
+        where: { id: targetClientId },
+        include: { user: true, professional: true },
+      })
+
+      if (clientInfo?.professional?.userId) {
+        const mealLabel = log.meal?.name || 'refeição'
+        const desc = notes ? ` (${notes.slice(0, 40)})` : ''
+        await createNotification({
+          userId: clientInfo.professional.userId,
+          type: 'MEAL_LOG',
+          title: '🍽️ Nova Refeição Registrada',
+          message: `${clientInfo.user.name} registrou ${mealLabel}${desc}${photoUrl ? ' com foto' : ''}.`,
+          link: `/dashboard/clients/${targetClientId}?tab=logs`,
+        })
+      }
+    }
 
     return NextResponse.json(log, { status: 201 })
   } catch (error) {

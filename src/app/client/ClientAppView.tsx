@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Utensils,
   Camera,
@@ -29,7 +29,16 @@ import { useToast } from '@/components/ui/ToastContext'
 export function ClientAppView({ client }: { client: any }) {
   const router = useRouter()
   const toast = useToast()
+  const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState<'plan' | 'log' | 'measurements' | 'checkin' | 'evolution' | 'goals'>('plan')
+
+  // Sync tab from query param if opened from a notification link
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam && ['plan', 'log', 'measurements', 'checkin', 'evolution', 'goals'].includes(tabParam)) {
+      setActiveTab(tabParam as any)
+    }
+  }, [searchParams])
 
   // Feedback notifications
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -274,7 +283,16 @@ export function ClientAppView({ client }: { client: any }) {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-[#26343B]">Plano Alimentar Vigente</h2>
-            <span className="badge-active">v{activePlan?.version || 1} Publicado</span>
+            {activePlan ? (
+              <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center space-x-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Dieta Oficial</span>
+              </span>
+            ) : (
+              <span className="bg-[#F0F4F7] text-[#71808A] px-2.5 py-0.5 rounded-full text-xs font-medium">
+                Sem dieta ativa
+              </span>
+            )}
           </div>
 
           {!activePlan ? (

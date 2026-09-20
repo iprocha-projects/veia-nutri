@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
+import { createNotification } from '@/lib/notifications'
 import { buildClientSummarySnapshot, generateAISummary } from '@/lib/ai-summary'
 
 export async function POST(req: Request) {
@@ -39,6 +40,17 @@ export async function POST(req: Request) {
         model,
       },
     })
+
+    // Notify client
+    if (client.userId) {
+      await createNotification({
+        userId: client.userId,
+        type: 'AI_SUMMARY',
+        title: '✨ Novo Resumo Semanal',
+        message: 'Seu nutricionista disponibilizou um novo resumo de acompanhamento e orientações.',
+        link: '/client',
+      })
+    }
 
     return NextResponse.json(savedSummary, { status: 201 })
   } catch (error) {

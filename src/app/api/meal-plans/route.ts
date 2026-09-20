@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
+import { createNotification } from '@/lib/notifications'
 
 export async function POST(req: Request) {
  const session = await getSession()
@@ -67,6 +68,17 @@ export async function POST(req: Request) {
  meals: { include: { items: true } },
  },
  })
+
+ // Notify client if published
+ if (publish && client.userId) {
+ await createNotification({
+ userId: client.userId,
+ type: 'MEAL_PLAN',
+ title: '🥗 Novo Plano Alimentar Disponível!',
+ message: `Seu nutricionista publicou o plano "${title}". Confira suas refeições e metas!`,
+ link: '/client?tab=plan',
+ })
+ }
 
  return NextResponse.json(newPlan, { status: 201 })
  } catch (error) {

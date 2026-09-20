@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
+import { createNotification } from '@/lib/notifications'
 
 export async function POST(req: Request) {
   const session = await getSession()
@@ -45,6 +46,24 @@ export async function POST(req: Request) {
         notes,
       },
     })
+
+    // Notify professional if logged by client
+    if (session.role === 'CLIENT') {
+      const clientInfo = await prisma.client.findUnique({
+        where: { id: targetClientId },
+        include: { user: true, professional: true },
+      })
+
+      if (clientInfo?.professional?.userId) {
+        await createNotification({
+          userId: clientInfo.professional.userId,
+          type: 'CHECKIN',
+          title: '📝 Novo Check-in Semanal',
+          message: `${clientInfo.user.name} enviou um novo check-in de acompanhamento.`,
+          link: `/dashboard/clients/${targetClientId}?tab=checkins`,
+        })
+      }
+    }
 
     return NextResponse.json(checkin, { status: 201 })
   } catch (error) {

@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
-import { Activity, Users, FileText, UserCheck, RefreshCw, Bell, Settings, Loader2, Camera, Shield, User as UserIcon, LogOut } from 'lucide-react'
+import { Loader2, Camera, Shield, User as UserIcon, LogOut } from 'lucide-react'
 import { Logo } from './Logo'
 import { useToast } from '@/components/ui/ToastContext'
+import { NotificationCenter } from './NotificationCenter'
 
 interface HeaderProps {
   currentUser?: {
@@ -168,11 +169,21 @@ export function Header({ currentUser }: HeaderProps) {
               >
                 Pacientes
               </Link>
+              <Link
+                href="/dashboard/templates"
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+                  pathname.startsWith('/dashboard/templates') ? 'text-[var(--text-main)] font-bold' : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                }`}
+              >
+                Modelos Base
+              </Link>
             </nav>
           )}
 
           {/* Right User Actions */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            <NotificationCenter />
+
             <button
               onClick={() => setIsProfileOpen(true)}
               className="flex items-center space-x-2 hover:bg-[var(--bg-main)] p-1.5 rounded-lg transition"

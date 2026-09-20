@@ -105,9 +105,18 @@ export function OverviewTab({ client, currentSummary, activePlan }: OverviewTabP
         <div className="card-clinical p-5 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-sm text-[#26343B]">Plano Alimentar Vigente</h3>
-            <span className="badge-active">Publicado v{activePlan?.version || 1}</span>
+            {activePlan ? (
+              <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full text-[11px] font-bold flex items-center space-x-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Em Vigor</span>
+              </span>
+            ) : (
+              <span className="bg-[#F0F4F7] text-[#71808A] px-2.5 py-0.5 rounded-full text-[11px] font-medium">
+                Nenhum plano ativo
+              </span>
+            )}
           </div>
-          <p className="text-xs font-medium text-[#26343B]">{activePlan?.title || 'Sem plano'}</p>
+          <p className="text-xs font-semibold text-[#26343B]">{activePlan?.title || 'Nenhum plano alimentar definido'}</p>
           <div className="text-xs text-[#71808A] space-y-1">
             {activePlan?.meals?.map((m: any) => (
               <div key={m.id} className="flex justify-between py-1 border-b border-[#F6F8FA]">
