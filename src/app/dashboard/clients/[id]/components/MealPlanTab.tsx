@@ -9,7 +9,6 @@ import {
   Trash2,
   Loader2,
   Sparkles,
-  History,
   Save,
   Check,
   ChevronDown,
@@ -17,7 +16,7 @@ import {
   Utensils,
   Pencil,
   Clock,
-  Layers,
+  ArrowLeft,
 } from 'lucide-react'
 import { TemplatePickerModal } from './TemplatePickerModal'
 import { SaveAsTemplateModal } from './SaveAsTemplateModal'
@@ -42,23 +41,23 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
     seenTitles.add(publishedPlan.title.trim().toLowerCase())
   }
 
-  const uniqueHistoricalPlans: any[] = []
+  const uniqueOtherPlans: any[] = []
   for (const plan of mealPlans) {
     if (publishedPlan && plan.id === publishedPlan.id) continue
     const normTitle = plan.title?.trim().toLowerCase() || ''
     if (!seenTitles.has(normTitle)) {
       seenTitles.add(normTitle)
-      uniqueHistoricalPlans.push(plan)
+      uniqueOtherPlans.push(plan)
     }
   }
 
   // Combined list of distinct plans
   const displayPlans = publishedPlan
-    ? [publishedPlan, ...uniqueHistoricalPlans]
-    : uniqueHistoricalPlans
+    ? [publishedPlan, ...uniqueOtherPlans]
+    : uniqueOtherPlans
 
-  // View state: 'editor' (full expanded plan editor) or 'history' (cards view like templates)
-  const [view, setView] = useState<'editor' | 'history'>('editor')
+  // View state: 'cards' (default primary view) or 'editor' (appears only when editing or creating)
+  const [view, setView] = useState<'cards' | 'editor'>('cards')
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null)
   const [activatingId, setActivatingId] = useState<string | null>(null)
   const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null)
@@ -270,10 +269,17 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
       })
 
       if (res.ok) {
-        toast.success(
-          'Plano em Vigor Publicado!',
-          'Esta versão agora é a dieta oficial do paciente. Atualizando a página...'
-        )
+        if (publish) {
+          toast.success(
+            'Plano em Vigor Publicado!',
+            'Esta versão agora é a dieta oficial do paciente. Atualizando a página...'
+          )
+        } else {
+          toast.success(
+            'Plano Salvo com Sucesso!',
+            'As alterações foram salvas. Atualizando a página...'
+          )
+        }
         setTimeout(() => {
           window.location.reload()
         }, 600)
@@ -318,9 +324,9 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
     }
   }
 
-  // Delete a historical plan
+  // Delete a plan
   const handleDeletePlan = async (id: string, title: string) => {
-    if (!confirm(`Deseja realmente excluir a versão "${title}" do histórico deste paciente?`)) return
+    if (!confirm(`Deseja realmente excluir o plano "${title}"?`)) return
 
     setDeletingPlanId(id)
     try {
@@ -330,15 +336,15 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
 
       if (res.ok) {
         toast.success(
-          'Versão Excluída!',
-          `A versão "${title}" foi removida do histórico do paciente.`
+          'Plano Excluído!',
+          `O plano "${title}" foi excluído com sucesso.`
         )
         setTimeout(() => {
           window.location.reload()
         }, 500)
       } else {
         const err = await res.json()
-        toast.error('Erro ao excluir versão', err.error || 'Tente novamente.')
+        toast.error('Erro ao excluir plano', err.error || 'Tente novamente.')
       }
     } catch {
       toast.error('Erro de conexão', 'Falha ao se comunicar com o servidor.')
@@ -347,21 +353,32 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
     }
   }
 
-  // Create new draft based on current plan
-  const handleStartNewVersionDraft = () => {
-    const base = planTitle.replace(/\s*\(Nova Versão\)$/i, '').trim()
-    setPlanTitle(`${base} (Nova Versão)`)
+  // Create a new blank plan in the editor
+  const handleStartNewPlan = () => {
     setSelectedPlanId('new')
+    setPlanTitle('Novo Plano Alimentar')
     setSourceTemplate(null)
+    setMeals([
+      {
+        name: 'Café da Manhã',
+        time: '08:00',
+        instructions: '',
+        items: [{ foodName: 'Ovos mexidos', quantity: '2', unit: 'unid', notes: '' }],
+      },
+      {
+        name: 'Almoço',
+        time: '12:30',
+        instructions: '',
+        items: [{ foodName: 'Arroz integral', quantity: '120', unit: 'g', notes: '' }],
+      },
+    ])
     setView('editor')
-    toast.info(
-      'Novo Rascunho Iniciado',
-      'Faça as alterações necessárias e clique em "Publicar como Plano em Vigor" quando finalizar.'
-    )
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    toast.info('Novo Plano', 'Preencha as refeições e clique em salvar ou publicar.')
   }
 
-  // Open a plan from history into the full expanded editor
-  const handleEditFromHistory = (plan: any) => {
+  // Open an existing plan into the full editor
+  const handleEditPlan = (plan: any) => {
     setSelectedPlanId(plan.id)
     setPlanTitle(plan.title)
     setMeals(parseMealsFromPlan(plan))
@@ -370,116 +387,81 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
     window.scrollTo({ top: 0, behavior: 'smooth' })
     toast.info(
       'Editor Aberto',
-      `Plano "${plan.title}" carregado no editor completo.`
+      `Plano "${plan.title}" carregado para edição.`
     )
   }
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* View Switcher Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E2E8EE]">
-        <div className="flex items-center space-x-2">
-          <button
-            type="button"
-            onClick={() => setView('editor')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
-              view === 'editor'
-                ? 'bg-[#26343B] text-white shadow-sm'
-                : 'bg-white text-[#71808A] hover:text-[#26343B] border border-[#E2E8EE]'
-            }`}
-          >
-            <Utensils className="w-3.5 h-3.5" />
-            <span>
-              {selectedPlanId === 'new'
-                ? 'Novo Plano em Elaboração'
-                : isCurrentPlanPublished
-                ? 'Editor: Plano em Vigor'
-                : 'Editor do Plano'}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setView('history')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
-              view === 'history'
-                ? 'bg-[#26343B] text-white shadow-sm'
-                : 'bg-white text-[#71808A] hover:text-[#26343B] border border-[#E2E8EE]'
-            }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            <span>Histórico de Versões</span>
-            {displayPlans.length > 0 && (
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                  view === 'history'
-                    ? 'bg-white/20 text-white'
-                    : 'bg-[#E2E8EE] text-[#26343B]'
-                }`}
-              >
-                {displayPlans.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          {view === 'history' ? (
-            <button
-              type="button"
-              onClick={handleStartNewVersionDraft}
-              className="btn-primary text-xs flex items-center space-x-1.5 py-2 px-3.5 shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Criar Nova Versão</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setView('history')}
-              className="btn-secondary text-xs flex items-center space-x-1.5 py-2 px-3 hover:border-[#7897A8]"
-              title="Ver todas as versões anteriores deste paciente"
-            >
-              <Layers className="w-3.5 h-3.5 text-[#7897A8]" />
-              <span>Ver Histórico ({displayPlans.length})</span>
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* ========================================================================= */}
-      {/* VIEW 1: HISTORY CARDS (Just like the Modelos Base screen)                 */}
+      {/* VIEW 1: PLANS CARDS (Default Primary View)                                 */}
       {/* ========================================================================= */}
-      {view === 'history' && (
+      {view === 'cards' && (
         <div className="space-y-6 animate-fade-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
+          {/* Header Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E2E8EE]">
+            <div className="flex items-center space-x-3">
               <h2 className="text-base font-bold text-[#26343B]">
-                Histórico & Ciclos Anteriores da Dieta
+                Planos do Paciente
               </h2>
-              <p className="text-xs text-[#71808A]">
-                Explore cada versão já criada para este paciente, expanda para inspecionar os alimentos ou torne uma versão anterior vigente.
-              </p>
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-[#26343B] text-white px-2.5 py-0.5 rounded-full inline-flex items-center space-x-1.5 shadow-sm">
+                <Utensils className="w-3 h-3 text-[#B8C9C1]" />
+                <span>Planos</span>
+                <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full">
+                  {displayPlans.length}
+                </span>
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setIsTemplatePickerOpen(true)}
+                className="btn-secondary text-xs flex items-center space-x-1.5 py-2 px-3 hover:border-[#7897A8]"
+                title="Preencher usando um modelo base"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#7897A8]" />
+                <span>Usar Modelo Base</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleStartNewPlan}
+                className="btn-primary text-xs flex items-center space-x-1.5 py-2 px-3.5 shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Criar Novo Plano</span>
+              </button>
             </div>
           </div>
 
           {displayPlans.length === 0 ? (
             <div className="card-clinical p-12 text-center space-y-3 bg-white border border-[#E2E8EE]">
               <div className="w-14 h-14 rounded-2xl bg-[#F0F4F7] mx-auto flex items-center justify-center text-[#7897A8]">
-                <History className="w-7 h-7 opacity-60" />
+                <Utensils className="w-7 h-7 opacity-60" />
               </div>
-              <h3 className="text-base font-bold text-[#26343B]">Nenhum plano cadastrado no histórico</h3>
+              <h3 className="text-base font-bold text-[#26343B]">Nenhum plano cadastrado</h3>
               <p className="text-xs text-[#71808A] max-w-md mx-auto">
                 Crie o primeiro plano alimentar deste paciente ou carregue um dos seus modelos base clicando no botão abaixo.
               </p>
-              <button
-                type="button"
-                onClick={() => setView('editor')}
-                className="btn-primary text-xs inline-flex items-center space-x-2 mt-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Elaborar Plano no Editor</span>
-              </button>
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsTemplatePickerOpen(true)}
+                  className="btn-secondary text-xs inline-flex items-center space-x-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-[#7897A8]" />
+                  <span>Usar Modelo Base</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartNewPlan}
+                  className="btn-primary text-xs inline-flex items-center space-x-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Criar Novo Plano</span>
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -511,8 +493,9 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
                               <span>Plano em Vigor</span>
                             </span>
                           ) : (
-                            <span className="text-[10px] font-bold uppercase tracking-wider bg-[#F0F4F7] text-[#71808A] px-2.5 py-0.5 rounded-full inline-block mb-1.5">
-                              Versão de {dateStr}
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-[#F0F4F7] text-[#71808A] px-2.5 py-0.5 rounded-full inline-flex items-center space-x-1 mb-1.5">
+                              <span>Plano</span>
+                              <span className="text-[9px] text-[#A0AEC0]">• {dateStr}</span>
                             </span>
                           )}
                           <h3 className="font-bold text-sm text-[#26343B] line-clamp-2">
@@ -520,14 +503,14 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
                           </h3>
                         </div>
 
-                        {/* Delete Historical Plan Button */}
+                        {/* Delete Plan Button */}
                         {!isPub && (
                           <button
                             type="button"
                             onClick={() => handleDeletePlan(plan.id, plan.title)}
                             disabled={deletingPlanId === plan.id}
                             className="p-1.5 text-[#71808A] hover:text-[#D94949] hover:bg-[#FFF5F5] rounded-lg transition shrink-0"
-                            title="Excluir esta versão do histórico"
+                            title="Excluir este plano"
                           >
                             {deletingPlanId === plan.id ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -549,7 +532,7 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
                         <span>•</span>
                         <span className="flex items-center space-x-1">
                           <Clock className="w-3 h-3 text-[#7897A8]" />
-                          <span>v{plan.version || 1}</span>
+                          <span>{dateStr}</span>
                         </span>
                       </div>
 
@@ -602,14 +585,14 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
                       </button>
 
                       <div className="flex items-center space-x-2">
-                        {/* Edit Button: Opens full expanded editor! */}
+                        {/* Edit Button: Opens full editor! */}
                         <button
                           type="button"
-                          onClick={() => handleEditFromHistory(plan)}
-                          className="text-xs text-[#26343B] hover:text-[#7897A8] flex items-center space-x-1 font-semibold transition py-1 px-2 rounded-lg hover:bg-[#F0F4F7]"
-                          title="Abrir no editor completo"
+                          onClick={() => handleEditPlan(plan)}
+                          className="text-xs text-[#26343B] hover:text-[#7897A8] flex items-center space-x-1 font-semibold transition py-1 px-2.5 rounded-lg hover:bg-[#F0F4F7] border border-transparent hover:border-[#E2E8EE]"
+                          title="Abrir no editor"
                         >
-                          <Pencil className="w-3 h-3" />
+                          <Pencil className="w-3.5 h-3.5 text-[#7897A8]" />
                           <span>Editar</span>
                         </button>
 
@@ -623,9 +606,9 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
                             title="Tornar este plano como oficial do paciente"
                           >
                             {activatingId === plan.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             ) : (
-                              <Check className="w-3 h-3" />
+                              <Check className="w-3.5 h-3.5" />
                             )}
                             <span>Tornar em Vigor</span>
                           </button>
@@ -641,10 +624,30 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
       )}
 
       {/* ========================================================================= */}
-      {/* VIEW 2: EXPANDED PLAN EDITOR (Focused, Clean & Uncluttered)                 */}
+      {/* VIEW 2: EXPANDED PLAN EDITOR (Only shown when clicking Editar or Novo)     */}
       {/* ========================================================================= */}
       {view === 'editor' && (
         <div className="space-y-6 animate-fade-in">
+          {/* Top Return Button */}
+          <div className="flex items-center justify-between gap-3 pb-2 border-b border-[#E2E8EE]">
+            <button
+              type="button"
+              onClick={() => setView('cards')}
+              className="btn-secondary text-xs flex items-center space-x-1.5 py-1.5 px-3 hover:border-[#7897A8]"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-[#7897A8]" />
+              <span>Voltar para Planos</span>
+            </button>
+
+            <span className="text-xs font-semibold text-[#71808A]">
+              {selectedPlanId === 'new'
+                ? 'Elaborando Novo Plano'
+                : isCurrentPlanPublished
+                ? 'Editando Plano em Vigor'
+                : 'Editando Plano'}
+            </span>
+          </div>
+
           {/* Friendly Active Plan Banner (Only if Published) */}
           {isCurrentPlanPublished && (
             <div className="p-3 bg-emerald-50/80 border border-emerald-200/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-800 animate-fade-in">
@@ -655,10 +658,10 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
               </div>
               <button
                 type="button"
-                onClick={handleStartNewVersionDraft}
+                onClick={handleStartNewPlan}
                 className="text-[11px] font-bold text-emerald-800 hover:text-emerald-950 underline self-start sm:self-auto"
               >
-                + Criar Nova Versão deste Plano
+                + Criar Outro Plano
               </button>
             </div>
           )}
@@ -670,18 +673,28 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
               <div className="min-w-0">
                 <h2 className="text-base font-bold text-[#26343B]">
                   {selectedPlanId === 'new'
-                    ? 'Elaborar Nova Versão do Plano'
+                    ? 'Elaborar Novo Plano'
                     : isCurrentPlanPublished
                     ? `Editar Plano em Vigor: "${planTitle}"`
-                    : `Editar Versão: "${planTitle}"`}
+                    : `Editar Plano: "${planTitle}"`}
                 </h2>
                 <p className="text-xs text-[#71808A]">
                   Personalize as refeições e alimentos ou carregue um dos seus modelos base.
                 </p>
               </div>
 
-              {/* Quick Base Template & Publish Actions */}
+              {/* Quick Actions */}
               <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+                <button
+                  type="button"
+                  onClick={() => setView('cards')}
+                  className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2 whitespace-nowrap"
+                  title="Voltar para a lista de planos"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5 text-[#71808A]" />
+                  <span>Voltar</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setIsTemplatePickerOpen(true)}
@@ -700,6 +713,21 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
                 >
                   <Save className="w-3.5 h-3.5 text-[#71808A]" />
                   <span>Salvar como Modelo Base</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSavePlan(false)}
+                  disabled={saving}
+                  className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2 hover:border-[#7897A8] whitespace-nowrap"
+                  title="Salvar alterações sem torná-lo em vigor imediatamente"
+                >
+                  {saving ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5 text-[#7897A8]" />
+                  )}
+                  <span>Salvar Alterações</span>
                 </button>
 
                 <button
