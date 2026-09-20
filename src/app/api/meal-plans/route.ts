@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSession } from '@/lib/auth'
 import { createNotification } from '@/lib/notifications'
+import { areMealsDifferent } from '@/lib/meal-plans-comparator'
 
 export async function POST(req: Request) {
   const session = await getSession()
@@ -10,13 +11,11 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { planId, clientId, title, meals, publish } = await req.json()
+    const { planId, templateId, clientId, title, meals, publish } = await req.json()
 
     if (!clientId || !title?.trim() || !Array.isArray(meals)) {
       return NextResponse.json({ error: 'Dados incompletos para criação ou edição do plano alimentar' }, { status: 400 })
     }
-
-    const trimmedTitle = title.trim()
 
     // Verify that the client belongs to the authenticated nutritionist (tenant isolation)
     const client = await prisma.client.findFirst({
@@ -27,20 +26,56 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Paciente não encontrado ou não autorizado' }, { status: 403 })
     }
 
+    // Determine linked base template
+    let linkedTemplateId: string | null = templateId || null
+
+    if (!linkedTemplateId && planId && planId !== 'new') {
+      const existing = await prisma.mealPlan.findUnique({
+        where: { id: planId },
+        select: { templateId: true },
+      })
+      if (existing?.templateId) {
+        linkedTemplateId = existing.templateId
+      }
+    }
+
+    // Compute effective title according to the personalization rule:
+    // "Quando um modelo base tiver sendo utilizado pelo cliente e ocorrer alguma alteração e salvar,
+    // ou seja, ele ficar diferente do modelo base salvo, ele deve ter o mesmo nome com o (Personalizado) na frente.
+    // Tem que ser o plano base que foi modificado."
+    let effectiveTitle = title.trim()
+
+    if (linkedTemplateId) {
+      const baseTemplate = await prisma.mealPlanTemplate.findFirst({
+        where: { id: linkedTemplateId, professionalId: session.professionalId },
+      })
+
+      if (baseTemplate) {
+        const cleanBaseTitle = baseTemplate.title.replace(/\s*\(Personalizado\)$/i, '').trim()
+        const isModified = areMealsDifferent(meals, baseTemplate.meals as any[])
+
+        if (isModified) {
+          effectiveTitle = `${cleanBaseTitle} (Personalizado)`
+        } else {
+          effectiveTitle = cleanBaseTitle
+        }
+      }
+    }
+
     // Application-level uniqueness check per tenant/client:
     // Do NOT allow a nutritionist to create two plans with the same name for this client,
     // avoiding a global database constraint that would impact multitenancy across different nutritionists.
     const duplicatePlan = await prisma.mealPlan.findFirst({
       where: {
         clientId,
-        title: { equals: trimmedTitle, mode: 'insensitive' },
+        title: { equals: effectiveTitle, mode: 'insensitive' },
         ...(planId && planId !== 'new' ? { NOT: { id: planId } } : {}),
       },
     })
 
     if (duplicatePlan) {
       return NextResponse.json(
-        { error: `Já existe um plano alimentar com o nome "${trimmedTitle}" para este paciente. Escolha outro nome ou edite o plano existente.` },
+        { error: `Já existe um plano alimentar com o nome "${effectiveTitle}" para este paciente. Escolha outro nome ou edite o plano existente.` },
         { status: 400 }
       )
     }
@@ -84,7 +119,8 @@ export async function POST(req: Request) {
         const updatedPlan = await prisma.mealPlan.update({
           where: { id: planId },
           data: {
-            title: trimmedTitle,
+            title: effectiveTitle,
+            templateId: linkedTemplateId,
             status: publish ? 'PUBLISHED' : existingPlan.status,
             meals: {
               create: formattedMeals,
@@ -101,7 +137,7 @@ export async function POST(req: Request) {
             userId: client.userId,
             type: 'MEAL_PLAN',
             title: '🥗 Plano Alimentar Atualizado!',
-            message: `Seu nutricionista publicou o plano "${trimmedTitle}". Confira suas refeições e metas!`,
+            message: `Seu nutricionista publicou o plano "${effectiveTitle}". Confira suas refeições e metas!`,
             link: '/client?tab=plan',
           })
         }
@@ -129,7 +165,8 @@ export async function POST(req: Request) {
     const newPlan = await prisma.mealPlan.create({
       data: {
         clientId,
-        title: trimmedTitle,
+        templateId: linkedTemplateId,
+        title: effectiveTitle,
         status: publish ? 'PUBLISHED' : 'DRAFT',
         version: nextVersion,
         meals: {
@@ -147,7 +184,7 @@ export async function POST(req: Request) {
         userId: client.userId,
         type: 'MEAL_PLAN',
         title: '🥗 Novo Plano Alimentar Disponível!',
-        message: `Seu nutricionista publicou o plano "${trimmedTitle}". Confira suas refeições e metas!`,
+        message: `Seu nutricionista publicou o plano "${effectiveTitle}". Confira suas refeições e metas!`,
         link: '/client?tab=plan',
       })
     }

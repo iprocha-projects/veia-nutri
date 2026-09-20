@@ -7,43 +7,44 @@ import { notFound } from 'next/navigation'
 export const dynamic = 'force-dynamic'
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
- const session = await getSession()
- const { id } = await params
+  const session = await getSession()
+  const { id } = await params
 
- const client = await prisma.client.findUnique({
- where: { id },
- include: {
- user: true,
- mealPlans: {
- include: {
- meals: {
- include: { items: true },
- orderBy: { sortOrder: 'asc' },
- },
- },
- orderBy: { version: 'desc' },
- },
- mealLogs: {
- include: { meal: true },
- orderBy: { loggedAt: 'desc' },
- },
- measurements: {
- orderBy: { measuredAt: 'asc' },
- },
- progressPhotos: {
- orderBy: { takenAt: 'desc' },
- },
- checkins: {
- orderBy: { submittedAt: 'desc' },
- },
- goals: {
- orderBy: { startsAt: 'desc' },
- },
- aiSummaries: {
- orderBy: { createdAt: 'desc' },
- },
- },
- })
+  const client = await prisma.client.findUnique({
+    where: { id },
+    include: {
+      user: true,
+      mealPlans: {
+        include: {
+          template: true,
+          meals: {
+            include: { items: true },
+            orderBy: { sortOrder: 'asc' },
+          },
+        },
+        orderBy: { version: 'desc' },
+      },
+      mealLogs: {
+        include: { meal: true },
+        orderBy: { loggedAt: 'desc' },
+      },
+      measurements: {
+        orderBy: { measuredAt: 'asc' },
+      },
+      progressPhotos: {
+        orderBy: { takenAt: 'desc' },
+      },
+      checkins: {
+        orderBy: { submittedAt: 'desc' },
+      },
+      goals: {
+        orderBy: { startsAt: 'desc' },
+      },
+      aiSummaries: {
+        orderBy: { createdAt: 'desc' },
+      },
+    },
+  })
 
   if (!client || (session?.role === 'NUTRITIONIST' && client.professionalId !== session.professionalId)) {
     notFound()

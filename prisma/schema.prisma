@@ -86,19 +86,22 @@ model Client {
 }
 
 model MealPlan {
-  id        String         @id @default(uuid())
-  clientId  String         @map("client_id")
-  title     String
-  status    MealPlanStatus @default(DRAFT)
-  startsAt  DateTime       @default(now()) @map("starts_at")
-  endsAt    DateTime?      @map("ends_at")
-  version   Int            @default(1)
-  createdAt DateTime       @default(now()) @map("created_at")
+  id         String         @id @default(uuid())
+  clientId   String         @map("client_id")
+  templateId String?        @map("template_id")
+  title      String
+  status     MealPlanStatus @default(DRAFT)
+  startsAt   DateTime       @default(now()) @map("starts_at")
+  endsAt     DateTime?      @map("ends_at")
+  version    Int            @default(1)
+  createdAt  DateTime       @default(now()) @map("created_at")
 
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  meals  Meal[]
+  client   Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  template MealPlanTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  meals    Meal[]
 
   @@index([clientId])
+  @@index([templateId])
   @@map("meal_plans")
 }
 
@@ -256,6 +259,7 @@ model MealPlanTemplate {
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
   professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  mealPlans      MealPlan[]
 
   @@index([professionalId])
   @@map("meal_plan_templates")

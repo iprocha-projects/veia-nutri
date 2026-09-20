@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { TemplatePickerModal } from './TemplatePickerModal'
 import { SaveAsTemplateModal } from './SaveAsTemplateModal'
+import { areMealsDifferent } from '@/lib/meal-plans-comparator'
 
 interface MealPlanTabProps {
   clientId: string
@@ -106,9 +107,25 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
   const [saving, setSaving] = useState(false)
   const [activating, setActivating] = useState(false)
 
+  // Source template tracking for the personalization rule
+  const [sourceTemplate, setSourceTemplate] = useState<any | null>(currentPlan?.template || null)
+  const [availableTemplates, setAvailableTemplates] = useState<any[]>([])
+
   // Modals state
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false)
   const [isSaveAsTemplateOpen, setIsSaveAsTemplateOpen] = useState(false)
+
+  // Load available templates to associate base models
+  useEffect(() => {
+    fetch('/api/meal-plan-templates')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data.templates)) {
+          setAvailableTemplates(data.templates)
+        }
+      })
+      .catch(console.error)
+  }, [])
 
   // Close custom dropdown on click outside
   useEffect(() => {
@@ -128,12 +145,45 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
   // Sync state when selected plan changes
   useEffect(() => {
     if (selectedPlanId === 'new') {
-      // Keep existing draft or reset if needed
+      // Keep existing draft or template if applied
     } else if (currentPlan) {
       setPlanTitle(currentPlan.title)
       setMeals(parseMealsFromPlan(currentPlan))
+
+      // Identify if this plan belongs to a base template
+      let matched = currentPlan.template || null
+      if (!matched && availableTemplates.length > 0) {
+        const cleanPlanTitle = (currentPlan.title || '')
+          .replace(/\s*\(Personalizado\)$/i, '')
+          .trim()
+          .toLowerCase()
+        matched =
+          availableTemplates.find(
+            (t) => t.title.trim().toLowerCase() === cleanPlanTitle
+          ) || null
+      }
+      setSourceTemplate(matched)
     }
-  }, [selectedPlanId])
+  }, [selectedPlanId, availableTemplates])
+
+  // Check whether current meals differ from the saved base template
+  const isModifiedFromTemplate = sourceTemplate
+    ? areMealsDifferent(meals, sourceTemplate.meals)
+    : false
+
+  // Automatic title update according to personalization rule:
+  // Only append "(Personalizado)" if meals differ from the saved base template!
+  useEffect(() => {
+    if (sourceTemplate) {
+      const cleanBase = sourceTemplate.title.replace(/\s*\(Personalizado\)$/i, '').trim()
+      const isDiff = areMealsDifferent(meals, sourceTemplate.meals)
+      if (isDiff) {
+        setPlanTitle(`${cleanBase} (Personalizado)`)
+      } else {
+        setPlanTitle(cleanBase)
+      }
+    }
+  }, [meals, sourceTemplate])
 
   const isCurrentPlanPublished = currentPlan?.status === 'PUBLISHED'
 
@@ -170,7 +220,7 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
     setMeals(updated)
   }
 
-  // Apply template from library -> Transforms into an independent plan with "(Personalizado)"
+  // Apply template from library -> Starts as identical to base template!
   const handleApplyTemplate = (template: any) => {
     if (Array.isArray(template.meals) && template.meals.length > 0) {
       setMeals(
@@ -187,15 +237,14 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
         }))
       )
 
-      // Clean existing (Personalizado) if any, and append automatically
+      setSourceTemplate(template)
       const cleanBase = template.title.replace(/\s*\(Personalizado\)$/i, '').trim()
-      const customizedTitle = `${cleanBase} (Personalizado)`
-      setPlanTitle(customizedTitle)
+      setPlanTitle(cleanBase)
       setSelectedPlanId('new')
 
       toast.success(
         'Modelo Base Aplicado!',
-        `O plano agora é independente para este paciente e foi nomeado como "${customizedTitle}".`
+        `Modelo "${cleanBase}" inserido. Se você alterar as refeições e salvar, ele receberá "(Personalizado)".`
       )
     }
   }
@@ -204,13 +253,27 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
   const handleSavePlan = async (publish: boolean) => {
     setSaving(true)
     try {
+      let finalTitle = planTitle.trim()
+      const finalTemplateId = sourceTemplate?.id || currentPlan?.templateId || undefined
+
+      if (sourceTemplate) {
+        const cleanBase = sourceTemplate.title.replace(/\s*\(Personalizado\)$/i, '').trim()
+        const isDiff = areMealsDifferent(meals, sourceTemplate.meals)
+        if (isDiff) {
+          finalTitle = `${cleanBase} (Personalizado)`
+        } else {
+          finalTitle = cleanBase
+        }
+      }
+
       const res = await fetch('/api/meal-plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           planId: selectedPlanId !== 'new' ? selectedPlanId : undefined,
+          templateId: finalTemplateId,
           clientId,
-          title: planTitle,
+          title: finalTitle,
           meals,
           publish,
         }),
@@ -532,6 +595,46 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
 
         {/* Title Input */}
         <div className="space-y-4">
+          {/* Base Template Status Indicator */}
+          {sourceTemplate && (
+            <div
+              className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs transition-all animate-fade-in ${
+                isModifiedFromTemplate
+                  ? 'bg-amber-50/90 border-amber-200 text-amber-900'
+                  : 'bg-emerald-50/90 border-emerald-200 text-emerald-900'
+              }`}
+            >
+              <div className="flex items-center space-x-2.5">
+                <Sparkles
+                  className={`w-4 h-4 shrink-0 ${
+                    isModifiedFromTemplate ? 'text-amber-600' : 'text-emerald-600'
+                  }`}
+                />
+                <div>
+                  <span className="font-bold block">
+                    {isModifiedFromTemplate
+                      ? `Modelo Base Modificado: "${sourceTemplate.title.replace(/\s*\(Personalizado\)$/i, '').trim()}"`
+                      : `Modelo Base em Uso: "${sourceTemplate.title.replace(/\s*\(Personalizado\)$/i, '').trim()}"`}
+                  </span>
+                  <p className="text-[11px] opacity-80 mt-0.5">
+                    {isModifiedFromTemplate
+                      ? 'Refeições alteradas em relação ao modelo base salvo. O plano receberá "(Personalizado)" ao salvar.'
+                      : 'Refeições idênticas ao modelo base original salvo.'}
+                  </p>
+                </div>
+              </div>
+              <span
+                className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full shrink-0 self-start sm:self-center ${
+                  isModifiedFromTemplate
+                    ? 'bg-amber-200/80 text-amber-900'
+                    : 'bg-emerald-200/80 text-emerald-900'
+                }`}
+              >
+                {isModifiedFromTemplate ? 'Personalizado (Modificado)' : 'Modelo Base Idêntico'}
+              </span>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-semibold text-[#26343B] mb-1">
               Nome do Plano Alimentar
