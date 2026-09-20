@@ -528,8 +528,8 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
       {/* Main Meal Plan Builder Card */}
       <div className="card-clinical p-6 space-y-6">
         {/* Actions Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E2E8EE]">
-          <div>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#E2E8EE]">
+          <div className="min-w-0">
             <h2 className="text-base font-bold text-[#26343B]">
               {selectedPlanId === 'new'
                 ? 'Elaborar Nova Versão do Plano'
@@ -541,11 +541,11 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
           </div>
 
           {/* Quick Base Template Actions */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
             <button
               type="button"
               onClick={() => setIsTemplatePickerOpen(true)}
-              className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2 bg-gradient-to-r from-[#F0F6F9] to-white hover:from-[#E2EEF5]"
+              className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2 bg-gradient-to-r from-[#F0F6F9] to-white hover:from-[#E2EEF5] whitespace-nowrap"
               title="Preencher usando um modelo base"
             >
               <Sparkles className="w-3.5 h-3.5 text-[#7897A8]" />
@@ -555,7 +555,7 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
             <button
               type="button"
               onClick={() => setIsSaveAsTemplateOpen(true)}
-              className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2"
+              className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2 whitespace-nowrap"
               title="Salvar este plano como modelo na sua biblioteca"
             >
               <Save className="w-3.5 h-3.5 text-[#71808A]" />
@@ -564,24 +564,9 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
 
             <button
               type="button"
-              onClick={() => handleSavePlan(false)}
-              disabled={saving}
-              className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2"
-              title="Salvar alterações sem torná-lo o plano em vigor"
-            >
-              {saving ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Save className="w-3.5 h-3.5 text-[#71808A]" />
-              )}
-              <span>Salvar Alterações</span>
-            </button>
-
-            <button
-              type="button"
               onClick={() => handleSavePlan(true)}
               disabled={saving}
-              className="btn-primary text-xs flex items-center space-x-1.5 px-3.5 py-2 shadow-sm"
+              className="btn-primary text-xs flex items-center space-x-1.5 px-3.5 py-2 shadow-sm whitespace-nowrap"
             >
               {saving ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
