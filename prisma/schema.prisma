@@ -80,6 +80,7 @@ model Client {
   goals          Goal[]
   aiSummaries    AISummary[]
 
+  @@index([professionalId])
   @@map("clients")
 }
 
@@ -96,6 +97,7 @@ model MealPlan {
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   meals  Meal[]
 
+  @@index([clientId])
   @@map("meal_plans")
 }
 
@@ -111,6 +113,7 @@ model Meal {
   items    MealItem[]
   mealLogs MealLog[]
 
+  @@index([mealPlanId])
   @@map("meals")
 }
 
@@ -124,6 +127,7 @@ model MealItem {
 
   meal Meal @relation(fields: [mealId], references: [id], onDelete: Cascade)
 
+  @@index([mealId])
   @@map("meal_items")
 }
 
@@ -138,6 +142,9 @@ model MealLog {
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   meal   Meal?  @relation(fields: [mealId], references: [id], onDelete: SetNull)
 
+  @@index([clientId])
+  @@index([mealId])
+  @@index([loggedAt])
   @@map("meal_logs")
 }
 
@@ -153,6 +160,8 @@ model Measurement {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
+  @@index([clientId])
+  @@index([measuredAt])
   @@map("measurements")
 }
 
@@ -166,6 +175,8 @@ model ProgressPhoto {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
+  @@index([clientId])
+  @@index([takenAt])
   @@map("progress_photos")
 }
 
@@ -180,6 +191,8 @@ model Checkin {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
+  @@index([clientId])
+  @@index([submittedAt])
   @@map("checkins")
 }
 
@@ -195,6 +208,7 @@ model Goal {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
+  @@index([clientId])
   @@map("goals")
 }
 
@@ -209,6 +223,8 @@ model Notification {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([readAt])
   @@map("notifications")
 }
 
@@ -224,5 +240,6 @@ model AISummary {
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
+  @@index([clientId])
   @@map("ai_summaries")
 }

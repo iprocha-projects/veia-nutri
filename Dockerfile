@@ -36,4 +36,4 @@ RUN mkdir -p /app/public/uploads/meals /app/public/uploads/progress
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node --import tsx/esm prisma/seed.ts || npx tsx prisma/seed.ts || node prisma/seed.js; npm start"]
+CMD ["sh", "-c", "npx prisma db push && npm start"]

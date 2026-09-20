@@ -45,14 +45,14 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
  },
  })
 
- if (!client) {
- notFound()
- }
+  if (!client || (session?.role === 'NUTRITIONIST' && client.professionalId !== session.professionalId)) {
+    notFound()
+  }
 
- return (
- <div className="min-h-screen bg-[#F6F8FA]">
- <Header currentUser={{ name: session?.name || 'Dra. Amanda Silva', role: 'NUTRITIONIST' }} />
- <ClientProfileClient client={client} />
- </div>
- )
+  return (
+    <div className="min-h-screen bg-[#F6F8FA]">
+      <Header currentUser={{ name: session?.name || 'Nutricionista', role: 'NUTRITIONIST' }} />
+      <ClientProfileClient client={client} />
+    </div>
+  )
 }

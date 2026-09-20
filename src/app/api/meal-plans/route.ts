@@ -15,6 +15,15 @@ export async function POST(req: Request) {
  return NextResponse.json({ error: 'Dados incompletos para criação do plano alimentar' }, { status: 400 })
  }
 
+ // Verify that the client belongs to the authenticated nutritionist
+ const client = await prisma.client.findFirst({
+ where: { id: clientId, professionalId: session.professionalId },
+ })
+
+ if (!client) {
+ return NextResponse.json({ error: 'Paciente não encontrado ou não autorizado' }, { status: 403 })
+ }
+
  // Get current version count for this client
  const existingPlans = await prisma.mealPlan.findMany({
  where: { clientId },

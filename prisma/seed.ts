@@ -4,39 +4,27 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function main() {
-  console.log('🌱 Starting database reset...')
+  console.log('🌱 Initializing database seed...')
 
-  // Clean database
-  await prisma.aISummary.deleteMany()
-  await prisma.notification.deleteMany()
-  await prisma.goal.deleteMany()
-  await prisma.checkin.deleteMany()
-  await prisma.progressPhoto.deleteMany()
-  await prisma.measurement.deleteMany()
-  await prisma.mealLog.deleteMany()
-  await prisma.mealItem.deleteMany()
-  await prisma.meal.deleteMany()
-  await prisma.mealPlan.deleteMany()
-  await prisma.client.deleteMany()
-  await prisma.professional.deleteMany()
-  await prisma.user.deleteMany()
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@exemplo.com'
+  const adminPassword = process.env.ADMIN_PASSWORD || '123456'
+  const passwordHash = await bcrypt.hash(adminPassword, 10)
 
-  const passwordHash = await bcrypt.hash('123456', 10)
-
-  // Create Master Admin
-  await prisma.user.create({
-    data: {
-      email: 'admin@exemplo.com',
+  // Safely upsert Master Admin without deleting existing users or records
+  const adminUser = await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: {},
+    create: {
+      email: adminEmail,
       passwordHash,
       role: Role.ADMIN,
       name: 'Super Admin',
     },
   })
 
-  console.log('✅ Database reset successfully! All mock data removed.')
+  console.log(`✅ Master Admin ready: ${adminUser.email}`)
   console.log('--------------------------------------------------')
-  console.log('🔑 Credenciais de Acesso (Única Conta):')
-  console.log('   Admin: admin@exemplo.com | Senha: 123456')
+  console.log(`🔑 Admin: ${adminEmail}`)
   console.log('--------------------------------------------------')
 }
 

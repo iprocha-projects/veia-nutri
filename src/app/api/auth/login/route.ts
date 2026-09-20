@@ -34,7 +34,7 @@ export async function POST(req: Request) {
  clientId: user.client?.id,
  }
 
- const token = signToken(sessionPayload)
+ const token = await signToken(sessionPayload)
 
  const response = NextResponse.json({ success: true, user: sessionPayload })
  response.cookies.set('nutrimvo_token', token, {

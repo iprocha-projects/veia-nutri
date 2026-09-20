@@ -29,7 +29,7 @@ services:
       - "3000:3000"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/nutrimvo?schema=public
-      - JWT_SECRET=nutri_mvo_super_secret_jwt_key_2026_prod
+      - JWT_SECRET=${JWT_SECRET:-veia_nutri_local_dev_secret}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}

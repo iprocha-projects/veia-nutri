@@ -47,7 +47,7 @@ export default function NewClientPage() {
 
  return (
  <div className="min-h-screen bg-[#F6F8FA]">
- <Header currentUser={{ name: 'Dra. Amanda Silva', role: 'NUTRITIONIST' }} />
+ <Header currentUser={{ name: 'Nutricionista', role: 'NUTRITIONIST' }} />
 
  <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
  <div className="flex items-center justify-between">
