@@ -1,6 +1,7 @@
 'use client'
 
 import { Sparkles } from 'lucide-react'
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer'
 
 interface OverviewTabProps {
   client: any
@@ -27,8 +28,8 @@ export function OverviewTab({ client, currentSummary, activePlan }: OverviewTabP
           </div>
 
           {currentSummary ? (
-            <div className="bg-[#F6F8FA] p-4 rounded-lg border border-[#E2E8EE] text-sm text-[#26343B] whitespace-pre-line leading-relaxed">
-              {currentSummary.summary}
+            <div className="bg-[#F6F8FA] p-4 rounded-lg border border-[#E2E8EE]">
+              <MarkdownRenderer content={currentSummary.summary} />
             </div>
           ) : (
             <div className="text-center py-8 text-[#71808A] text-xs">

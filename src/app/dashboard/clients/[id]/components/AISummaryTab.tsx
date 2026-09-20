@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Sparkles, Edit, Loader2 } from 'lucide-react'
 import { useToast } from '@/components/ui/ToastContext'
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer'
 
 interface AISummaryTabProps {
   clientId: string
@@ -131,8 +132,8 @@ export function AISummaryTab({
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-[#26343B] whitespace-pre-line leading-relaxed animate-fade-in">
-                {currentSummary.summary}
+              <div className="text-sm text-[#26343B] animate-fade-in">
+                <MarkdownRenderer content={currentSummary.summary} />
               </div>
             )}
           </div>
