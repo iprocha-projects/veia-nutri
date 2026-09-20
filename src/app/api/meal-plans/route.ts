@@ -195,3 +195,42 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erro ao salvar plano alimentar' }, { status: 500 })
   }
 }
+
+export async function DELETE(req: Request) {
+  const session = await getSession()
+  if (!session || session.role !== 'NUTRITIONIST' || !session.professionalId) {
+    return NextResponse.json({ error: 'Somente nutricionistas podem excluir planos alimentares' }, { status: 401 })
+  }
+
+  try {
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID do plano alimentar é obrigatório' }, { status: 400 })
+    }
+
+    // Verify the plan exists and belongs to a client of this nutritionist
+    const targetPlan = await prisma.mealPlan.findUnique({
+      where: { id },
+      include: { client: true },
+    })
+
+    if (!targetPlan) {
+      return NextResponse.json({ error: 'Plano alimentar não encontrado' }, { status: 404 })
+    }
+
+    if (targetPlan.client.professionalId !== session.professionalId) {
+      return NextResponse.json({ error: 'Acesso não autorizado a este plano' }, { status: 403 })
+    }
+
+    await prisma.mealPlan.delete({
+      where: { id },
+    })
+
+    return NextResponse.json({ success: true, message: 'Plano alimentar excluído com sucesso' })
+  } catch (error) {
+    console.error('Error deleting meal plan:', error)
+    return NextResponse.json({ error: 'Erro ao excluir plano alimentar' }, { status: 500 })
+  }
+}

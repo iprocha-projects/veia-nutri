@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/ToastContext'
 import {
@@ -12,8 +12,12 @@ import {
   History,
   Save,
   Check,
-  Layers,
   ChevronDown,
+  ChevronUp,
+  Utensils,
+  Pencil,
+  Clock,
+  Layers,
 } from 'lucide-react'
 import { TemplatePickerModal } from './TemplatePickerModal'
 import { SaveAsTemplateModal } from './SaveAsTemplateModal'
@@ -28,13 +32,11 @@ interface MealPlanTabProps {
 export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTabProps) {
   const router = useRouter()
   const toast = useToast()
-  const dropdownRef = useRef<HTMLDivElement>(null)
 
   // 1. Identify published (in vigor) plan
   const publishedPlan = mealPlans.find((p) => p.status === 'PUBLISHED') || activePlan
 
-  // 2. Deduplicate plans so each distinct plan appears only ONCE!
-  // Exclude duplicate titles of the published plan and deduplicate older drafts
+  // 2. Deduplicate plans so each distinct plan appears only ONCE
   const seenTitles = new Set<string>()
   if (publishedPlan?.title) {
     seenTitles.add(publishedPlan.title.trim().toLowerCase())
@@ -50,15 +52,18 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
     }
   }
 
-  // Combined unique list for the dropdown
+  // Combined list of distinct plans
   const displayPlans = publishedPlan
     ? [publishedPlan, ...uniqueHistoricalPlans]
     : uniqueHistoricalPlans
 
-  // Dropdown open/close state
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  // View state: 'editor' (full expanded plan editor) or 'history' (cards view like templates)
+  const [view, setView] = useState<'editor' | 'history'>('editor')
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null)
+  const [activatingId, setActivatingId] = useState<string | null>(null)
+  const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null)
 
-  // Currently inspected plan ID in the version manager
+  // Currently inspected plan ID in the editor
   const [selectedPlanId, setSelectedPlanId] = useState<string>(
     publishedPlan?.id || displayPlans[0]?.id || 'new'
   )
@@ -105,7 +110,6 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
 
   const [meals, setMeals] = useState<any[]>(parseMealsFromPlan(currentPlan))
   const [saving, setSaving] = useState(false)
-  const [activating, setActivating] = useState(false)
 
   // Source template tracking for the personalization rule
   const [sourceTemplate, setSourceTemplate] = useState<any | null>(currentPlan?.template || null)
@@ -115,7 +119,7 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false)
   const [isSaveAsTemplateOpen, setIsSaveAsTemplateOpen] = useState(false)
 
-  // Load available templates to associate base models
+  // Load available templates
   useEffect(() => {
     fetch('/api/meal-plan-templates')
       .then((res) => res.json())
@@ -126,21 +130,6 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
       })
       .catch(console.error)
   }, [])
-
-  // Close custom dropdown on click outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false)
-      }
-    }
-    if (isDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [isDropdownOpen])
 
   // Sync state when selected plan changes
   useEffect(() => {
@@ -241,6 +230,7 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
       const cleanBase = template.title.replace(/\s*\(Personalizado\)$/i, '').trim()
       setPlanTitle(cleanBase)
       setSelectedPlanId('new')
+      setView('editor')
 
       toast.success(
         'Modelo Base Aplicado!',
@@ -249,7 +239,7 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
     }
   }
 
-  // Save new version or draft
+  // Save and publish as in vigor
   const handleSavePlan = async (publish: boolean) => {
     setSaving(true)
     try {
@@ -280,23 +270,13 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
       })
 
       if (res.ok) {
-        if (publish) {
-          toast.success(
-            'Plano em Vigor Publicado!',
-            'Esta versão agora é a dieta oficial do paciente. Atualizando a página...'
-          )
-          setTimeout(() => {
-            window.location.reload()
-          }, 600)
-        } else {
-          toast.success(
-            'Plano Salvo com Sucesso!',
-            'As alterações foram salvas. Atualizando a página...'
-          )
-          setTimeout(() => {
-            window.location.reload()
-          }, 600)
-        }
+        toast.success(
+          'Plano em Vigor Publicado!',
+          'Esta versão agora é a dieta oficial do paciente. Atualizando a página...'
+        )
+        setTimeout(() => {
+          window.location.reload()
+        }, 600)
       } else {
         const err = await res.json()
         toast.error('Erro ao salvar plano', err.error || 'Verifique as informações.')
@@ -309,19 +289,20 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
   }
 
   // Activate an existing historical version as the "Plano em Vigor"
-  const handleActivateVersion = async () => {
-    if (!currentPlan?.id) return
+  const handleActivateVersion = async (targetPlan?: any) => {
+    const planToActivate = targetPlan || currentPlan
+    if (!planToActivate?.id) return
 
-    setActivating(true)
+    setActivatingId(planToActivate.id)
     try {
-      const res = await fetch(`/api/meal-plans/${currentPlan.id}/activate`, {
+      const res = await fetch(`/api/meal-plans/${planToActivate.id}/activate`, {
         method: 'POST',
       })
 
       if (res.ok) {
         toast.success(
           'Plano Definido como Vigente!',
-          `A versão "${currentPlan.title}" agora é a oficial para este paciente. Atualizando...`
+          `A versão "${planToActivate.title}" agora é a oficial para este paciente. Atualizando...`
         )
         setTimeout(() => {
           window.location.reload()
@@ -333,7 +314,36 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
     } catch {
       toast.error('Erro de conexão', 'Não foi possível ativar esta versão.')
     } finally {
-      setActivating(false)
+      setActivatingId(null)
+    }
+  }
+
+  // Delete a historical plan
+  const handleDeletePlan = async (id: string, title: string) => {
+    if (!confirm(`Deseja realmente excluir a versão "${title}" do histórico deste paciente?`)) return
+
+    setDeletingPlanId(id)
+    try {
+      const res = await fetch(`/api/meal-plans?id=${id}`, {
+        method: 'DELETE',
+      })
+
+      if (res.ok) {
+        toast.success(
+          'Versão Excluída!',
+          `A versão "${title}" foi removida do histórico do paciente.`
+        )
+        setTimeout(() => {
+          window.location.reload()
+        }, 500)
+      } else {
+        const err = await res.json()
+        toast.error('Erro ao excluir versão', err.error || 'Tente novamente.')
+      }
+    } catch {
+      toast.error('Erro de conexão', 'Falha ao se comunicar com o servidor.')
+    } finally {
+      setDeletingPlanId(null)
     }
   }
 
@@ -342,415 +352,527 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
     const base = planTitle.replace(/\s*\(Nova Versão\)$/i, '').trim()
     setPlanTitle(`${base} (Nova Versão)`)
     setSelectedPlanId('new')
+    setSourceTemplate(null)
+    setView('editor')
     toast.info(
       'Novo Rascunho Iniciado',
       'Faça as alterações necessárias e clique em "Publicar como Plano em Vigor" quando finalizar.'
     )
   }
 
+  // Open a plan from history into the full expanded editor
+  const handleEditFromHistory = (plan: any) => {
+    setSelectedPlanId(plan.id)
+    setPlanTitle(plan.title)
+    setMeals(parseMealsFromPlan(plan))
+    setSourceTemplate(plan.template || null)
+    setView('editor')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    toast.info(
+      'Editor Aberto',
+      `Plano "${plan.title}" carregado no editor completo.`
+    )
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Version Management Bar */}
-      <div className="card-clinical p-4 bg-white border border-[#E2E8EE] space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center space-x-2">
-            <Layers className="w-5 h-5 text-[#7897A8]" />
-            <div>
-              <span className="text-xs font-bold text-[#26343B] uppercase tracking-wider block">
-                Histórico & Versões do Plano
+      {/* View Switcher Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E2E8EE]">
+        <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={() => setView('editor')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
+              view === 'editor'
+                ? 'bg-[#26343B] text-white shadow-sm'
+                : 'bg-white text-[#71808A] hover:text-[#26343B] border border-[#E2E8EE]'
+            }`}
+          >
+            <Utensils className="w-3.5 h-3.5" />
+            <span>
+              {selectedPlanId === 'new'
+                ? 'Novo Plano em Elaboração'
+                : isCurrentPlanPublished
+                ? 'Editor: Plano em Vigor'
+                : 'Editor do Plano'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setView('history')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
+              view === 'history'
+                ? 'bg-[#26343B] text-white shadow-sm'
+                : 'bg-white text-[#71808A] hover:text-[#26343B] border border-[#E2E8EE]'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Histórico de Versões</span>
+            {displayPlans.length > 0 && (
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                  view === 'history'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-[#E2E8EE] text-[#26343B]'
+                }`}
+              >
+                {displayPlans.length}
               </span>
-              <p className="text-[11px] text-[#71808A]">
-                Alterne entre versões anteriores ou defina qual dieta está ativa para o paciente.
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          {view === 'history' ? (
+            <button
+              type="button"
+              onClick={handleStartNewVersionDraft}
+              className="btn-primary text-xs flex items-center space-x-1.5 py-2 px-3.5 shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Criar Nova Versão</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setView('history')}
+              className="btn-secondary text-xs flex items-center space-x-1.5 py-2 px-3 hover:border-[#7897A8]"
+              title="Ver todas as versões anteriores deste paciente"
+            >
+              <Layers className="w-3.5 h-3.5 text-[#7897A8]" />
+              <span>Ver Histórico ({displayPlans.length})</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* VIEW 1: HISTORY CARDS (Just like the Modelos Base screen)                 */}
+      {/* ========================================================================= */}
+      {view === 'history' && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-[#26343B]">
+                Histórico & Ciclos Anteriores da Dieta
+              </h2>
+              <p className="text-xs text-[#71808A]">
+                Explore cada versão já criada para este paciente, expanda para inspecionar os alimentos ou torne uma versão anterior vigente.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
-            {/* Custom Personalized Version Dropdown */}
-            {displayPlans.length > 0 && (
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="flex items-center space-x-2 text-xs font-bold py-2 px-3.5 rounded-xl border border-[#E2E8EE] bg-[#F6F8FA] hover:bg-white hover:border-[#7897A8] text-[#26343B] transition shadow-sm active:scale-98"
-                >
-                  {selectedPlanId === 'new' ? (
-                    <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  ) : currentPlan?.status === 'PUBLISHED' ? (
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  ) : (
-                    <span className="w-2 h-2 rounded-full bg-slate-400" />
-                  )}
+          {displayPlans.length === 0 ? (
+            <div className="card-clinical p-12 text-center space-y-3 bg-white border border-[#E2E8EE]">
+              <div className="w-14 h-14 rounded-2xl bg-[#F0F4F7] mx-auto flex items-center justify-center text-[#7897A8]">
+                <History className="w-7 h-7 opacity-60" />
+              </div>
+              <h3 className="text-base font-bold text-[#26343B]">Nenhum plano cadastrado no histórico</h3>
+              <p className="text-xs text-[#71808A] max-w-md mx-auto">
+                Crie o primeiro plano alimentar deste paciente ou carregue um dos seus modelos base clicando no botão abaixo.
+              </p>
+              <button
+                type="button"
+                onClick={() => setView('editor')}
+                className="btn-primary text-xs inline-flex items-center space-x-2 mt-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Elaborar Plano no Editor</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {displayPlans.map((plan) => {
+                const isPub = plan.status === 'PUBLISHED'
+                const isExpanded = expandedCardId === plan.id
+                const mealsCount = Array.isArray(plan.meals) ? plan.meals.length : 0
+                const totalItems = Array.isArray(plan.meals)
+                  ? plan.meals.reduce((acc: number, m: any) => acc + (m.items?.length || 0), 0)
+                  : 0
+                const dateStr = new Date(plan.createdAt).toLocaleDateString('pt-BR')
 
-                  <span className="max-w-[180px] sm:max-w-[240px] truncate text-left">
-                    {selectedPlanId === 'new'
-                      ? 'Novo Rascunho em Elaboração'
-                      : currentPlan?.status === 'PUBLISHED'
-                      ? `● Plano em Vigor: ${currentPlan.title}`
-                      : `Versão: ${currentPlan?.title || 'Histórico'}`}
-                  </span>
-
-                  <ChevronDown
-                    className={`w-3.5 h-3.5 text-[#71808A] transition-transform ${
-                      isDropdownOpen ? 'rotate-180' : ''
+                return (
+                  <div
+                    key={plan.id}
+                    className={`card-clinical p-5 bg-white border transition-all flex flex-col justify-between space-y-4 shadow-sm group ${
+                      isPub
+                        ? 'border-emerald-300 ring-1 ring-emerald-200 hover:border-emerald-400'
+                        : 'border-[#E2E8EE] hover:border-[#7897A8]'
                     }`}
-                  />
-                </button>
+                  >
+                    <div className="space-y-3">
+                      {/* Top Badges & Delete Button */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          {isPub ? (
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full inline-flex items-center space-x-1.5 mb-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              <span>Plano em Vigor</span>
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-[#F0F4F7] text-[#71808A] px-2.5 py-0.5 rounded-full inline-block mb-1.5">
+                              Versão de {dateStr}
+                            </span>
+                          )}
+                          <h3 className="font-bold text-sm text-[#26343B] line-clamp-2">
+                            {plan.title}
+                          </h3>
+                        </div>
 
-                {/* Popover Menu with zero duplicates */}
-                {isDropdownOpen && (
-                  <div className="absolute right-0 mt-1.5 w-72 sm:w-80 bg-white rounded-2xl shadow-xl border border-[#E2E8EE] overflow-hidden z-30 animate-scale-in">
-                    <div className="p-2.5 bg-[#F6F8FA] border-b border-[#E2E8EE] flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-[#71808A] uppercase tracking-wider">
-                        Versões da Dieta
-                      </span>
-                      <span className="text-[10px] font-semibold text-[#7897A8]">
-                        {displayPlans.length} disponível(is)
-                      </span>
-                    </div>
-
-                    <div className="p-1 max-h-60 overflow-y-auto divide-y divide-[#F0F4F7]">
-                      {displayPlans.map((plan) => {
-                        const isPub = plan.status === 'PUBLISHED'
-                        const isSel = selectedPlanId === plan.id
-                        const dateStr = new Date(plan.createdAt).toLocaleDateString('pt-BR')
-
-                        return (
+                        {/* Delete Historical Plan Button */}
+                        {!isPub && (
                           <button
-                            key={plan.id}
                             type="button"
-                            onClick={() => {
-                              setSelectedPlanId(plan.id)
-                              setIsDropdownOpen(false)
-                            }}
-                            className={`w-full text-left p-2.5 rounded-xl flex items-start space-x-2.5 transition ${
-                              isSel
-                                ? 'bg-[#F0F6F9] text-[#26343B]'
-                                : 'hover:bg-[#FAFBFD] text-[#71808A]'
-                            }`}
+                            onClick={() => handleDeletePlan(plan.id, plan.title)}
+                            disabled={deletingPlanId === plan.id}
+                            className="p-1.5 text-[#71808A] hover:text-[#D94949] hover:bg-[#FFF5F5] rounded-lg transition shrink-0"
+                            title="Excluir esta versão do histórico"
                           >
-                            <div className="mt-0.5 shrink-0">
-                              {isPub ? (
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 block animate-pulse mt-1" />
-                              ) : (
-                                <span className="w-2 h-2 rounded-full bg-slate-300 block mt-1" />
-                              )}
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-1">
-                                <span
-                                  className={`text-xs truncate ${
-                                    isPub
-                                      ? 'font-bold text-emerald-800'
-                                      : 'font-semibold text-[#26343B]'
-                                  }`}
-                                >
-                                  {plan.title}
-                                </span>
-                                {isPub && (
-                                  <span className="text-[9px] font-bold uppercase bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full shrink-0">
-                                    Em Vigor
-                                  </span>
-                                )}
-                              </div>
-                              <span className="text-[10px] text-[#71808A] block mt-0.5">
-                                {isPub ? 'Dieta oficial ativa' : `Versão de ${dateStr}`}
-                              </span>
-                            </div>
-
-                            {isSel && (
-                              <Check className="w-4 h-4 text-[#7897A8] shrink-0 mt-0.5" />
+                            {deletingPlanId === plan.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
                             )}
                           </button>
-                        )
-                      })}
+                        )}
+                      </div>
 
-                      {selectedPlanId === 'new' && (
-                        <div className="p-2.5 bg-amber-50/70 rounded-xl flex items-center space-x-2 text-xs font-semibold text-amber-900">
-                          <span className="w-2 h-2 rounded-full bg-amber-500" />
-                          <span>Novo Rascunho em Elaboração</span>
+                      {/* Meta Information */}
+                      <div className="flex items-center space-x-3 text-[11px] text-[#71808A] pt-1 border-t border-[#F0F4F7]">
+                        <span className="flex items-center space-x-1 font-medium">
+                          <Utensils className="w-3.5 h-3.5 text-[#7897A8]" />
+                          <span>{mealsCount} refeições</span>
+                        </span>
+                        <span>•</span>
+                        <span>{totalItems} alimentos</span>
+                        <span>•</span>
+                        <span className="flex items-center space-x-1">
+                          <Clock className="w-3 h-3 text-[#7897A8]" />
+                          <span>v{plan.version || 1}</span>
+                        </span>
+                      </div>
+
+                      {/* Expandable Meals & Foods List (Same as Modelos Base!) */}
+                      {isExpanded && Array.isArray(plan.meals) && (
+                        <div className="pt-2 space-y-2 border-t border-[#F0F4F7] animate-fade-in max-h-72 overflow-y-auto pr-1">
+                          {plan.meals.map((m: any, mIdx: number) => (
+                            <div
+                              key={mIdx}
+                              className="bg-[#F8FAFC] p-2.5 rounded-lg border border-[#E2E8EE]"
+                            >
+                              <div className="flex justify-between font-bold text-xs text-[#26343B]">
+                                <span>{m.name}</span>
+                                <span className="text-[10px] text-[#71808A] font-normal">{m.time}</span>
+                              </div>
+                              {m.instructions && (
+                                <p className="text-[10px] text-[#71808A] italic mt-0.5">
+                                  {m.instructions}
+                                </p>
+                              )}
+                              <ul className="text-[11px] text-[#71808A] mt-1 space-y-0.5">
+                                {(m.items || []).map((item: any, iIdx: number) => (
+                                  <li key={iIdx} className="truncate">
+                                    • {item.foodName} ({item.quantity}{item.unit})
+                                    {item.notes ? ` - ${item.notes}` : ''}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
+
+                    {/* Card Actions Footer */}
+                    <div className="pt-3 border-t border-[#F0F4F7] flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedCardId(isExpanded ? null : plan.id)
+                        }
+                        className="text-xs text-[#71808A] hover:text-[#26343B] flex items-center space-x-1 transition font-medium"
+                      >
+                        <span>{isExpanded ? 'Ocultar' : 'Ver Refeições'}</span>
+                        {isExpanded ? (
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+
+                      <div className="flex items-center space-x-2">
+                        {/* Edit Button: Opens full expanded editor! */}
+                        <button
+                          type="button"
+                          onClick={() => handleEditFromHistory(plan)}
+                          className="text-xs text-[#26343B] hover:text-[#7897A8] flex items-center space-x-1 font-semibold transition py-1 px-2 rounded-lg hover:bg-[#F0F4F7]"
+                          title="Abrir no editor completo"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          <span>Editar</span>
+                        </button>
+
+                        {/* Make In Vigor Button */}
+                        {!isPub && (
+                          <button
+                            type="button"
+                            onClick={() => handleActivateVersion(plan)}
+                            disabled={activatingId === plan.id}
+                            className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1 px-2.5 rounded-lg flex items-center space-x-1 transition shadow-sm"
+                            title="Tornar este plano como oficial do paciente"
+                          >
+                            {activatingId === plan.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Check className="w-3 h-3" />
+                            )}
+                            <span>Tornar em Vigor</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={handleStartNewVersionDraft}
-              className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2 whitespace-nowrap"
-              title="Criar novo ciclo baseado neste plano"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Nova Versão</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Friendly Status Alert for Historical Versions */}
-        {!isCurrentPlanPublished && selectedPlanId !== 'new' && (
-          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 animate-fade-in">
-            <div className="flex items-center space-x-2">
-              <History className="w-4 h-4 text-amber-700 shrink-0" />
-              <span>
-                Você está visualizando uma <strong>versão anterior</strong>. O paciente não está vendo
-                este plano no momento.
-              </span>
+                )
+              })}
             </div>
-            <button
-              type="button"
-              onClick={handleActivateVersion}
-              disabled={activating}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-1.5 rounded-lg flex items-center space-x-1.5 shrink-0 transition shadow-sm"
-            >
-              {activating ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Check className="w-3.5 h-3.5" />
-              )}
-              <span>Tornar este Plano em Vigor</span>
-            </button>
-          </div>
-        )}
-
-        {isCurrentPlanPublished && (
-          <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-center space-x-2 text-xs text-emerald-800">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="font-semibold">Plano em Vigor:</span>
-            <span>Esta é a dieta oficial que seu paciente está acompanhando no aplicativo.</span>
-          </div>
-        )}
-      </div>
-
-      {/* Main Meal Plan Builder Card */}
-      <div className="card-clinical p-6 space-y-6">
-        {/* Actions Bar */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#E2E8EE]">
-          <div className="min-w-0">
-            <h2 className="text-base font-bold text-[#26343B]">
-              {selectedPlanId === 'new'
-                ? 'Elaborar Nova Versão do Plano'
-                : 'Editar Plano Alimentar'}
-            </h2>
-            <p className="text-xs text-[#71808A]">
-              Personalize as refeições e alimentos ou carregue um dos seus modelos base.
-            </p>
-          </div>
-
-          {/* Quick Base Template Actions */}
-          <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
-            <button
-              type="button"
-              onClick={() => setIsTemplatePickerOpen(true)}
-              className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2 bg-gradient-to-r from-[#F0F6F9] to-white hover:from-[#E2EEF5] whitespace-nowrap"
-              title="Preencher usando um modelo base"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-[#7897A8]" />
-              <span>Usar Modelo Base</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsSaveAsTemplateOpen(true)}
-              className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2 whitespace-nowrap"
-              title="Salvar este plano como modelo na sua biblioteca"
-            >
-              <Save className="w-3.5 h-3.5 text-[#71808A]" />
-              <span>Salvar como Modelo Base</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSavePlan(true)}
-              disabled={saving}
-              className="btn-primary text-xs flex items-center space-x-1.5 px-3.5 py-2 shadow-sm whitespace-nowrap"
-            >
-              {saving ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Send className="w-3.5 h-3.5" />
-              )}
-              <span>Publicar como Plano em Vigor</span>
-            </button>
-          </div>
+          )}
         </div>
+      )}
 
-        {/* Title Input */}
-        <div className="space-y-4">
-          {/* Base Template Status Indicator */}
-          {sourceTemplate && (
-            <div
-              className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs transition-all animate-fade-in ${
-                isModifiedFromTemplate
-                  ? 'bg-amber-50/90 border-amber-200 text-amber-900'
-                  : 'bg-emerald-50/90 border-emerald-200 text-emerald-900'
-              }`}
-            >
-              <div className="flex items-center space-x-2.5">
-                <Sparkles
-                  className={`w-4 h-4 shrink-0 ${
-                    isModifiedFromTemplate ? 'text-amber-600' : 'text-emerald-600'
-                  }`}
-                />
-                <div>
-                  <span className="font-bold block">
-                    {isModifiedFromTemplate
-                      ? `Modelo Base Modificado: "${sourceTemplate.title.replace(/\s*\(Personalizado\)$/i, '').trim()}"`
-                      : `Modelo Base em Uso: "${sourceTemplate.title.replace(/\s*\(Personalizado\)$/i, '').trim()}"`}
-                  </span>
-                  <p className="text-[11px] opacity-80 mt-0.5">
-                    {isModifiedFromTemplate
-                      ? 'Refeições alteradas em relação ao modelo base salvo. O plano receberá "(Personalizado)" ao salvar.'
-                      : 'Refeições idênticas ao modelo base original salvo.'}
-                  </p>
-                </div>
+      {/* ========================================================================= */}
+      {/* VIEW 2: EXPANDED PLAN EDITOR (Focused, Clean & Uncluttered)                 */}
+      {/* ========================================================================= */}
+      {view === 'editor' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Friendly Active Plan Banner (Only if Published) */}
+          {isCurrentPlanPublished && (
+            <div className="p-3 bg-emerald-50/80 border border-emerald-200/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-800 animate-fade-in">
+              <div className="flex items-center space-x-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="font-bold">Plano em Vigor:</span>
+                <span>Esta é a dieta oficial ativa que seu paciente está acompanhando no aplicativo.</span>
               </div>
-              <span
-                className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full shrink-0 self-start sm:self-center ${
-                  isModifiedFromTemplate
-                    ? 'bg-amber-200/80 text-amber-900'
-                    : 'bg-emerald-200/80 text-emerald-900'
-                }`}
+              <button
+                type="button"
+                onClick={handleStartNewVersionDraft}
+                className="text-[11px] font-bold text-emerald-800 hover:text-emerald-950 underline self-start sm:self-auto"
               >
-                {isModifiedFromTemplate ? 'Personalizado (Modificado)' : 'Modelo Base Idêntico'}
-              </span>
+                + Criar Nova Versão deste Plano
+              </button>
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-[#26343B] mb-1">
-              Nome do Plano Alimentar
-            </label>
-            <input
-              type="text"
-              value={planTitle}
-              onChange={(e) => setPlanTitle(e.target.value)}
-              placeholder="Ex: Protocolo Hipertrofia Fase 2"
-              className="w-full text-sm font-semibold p-2.5 rounded-xl border border-[#E2E8EE] focus:ring-2 focus:ring-[#7897A8] outline-none transition"
-            />
-          </div>
+          {/* Main Meal Plan Builder Card */}
+          <div className="card-clinical p-6 space-y-6">
+            {/* Actions Bar */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#E2E8EE]">
+              <div className="min-w-0">
+                <h2 className="text-base font-bold text-[#26343B]">
+                  {selectedPlanId === 'new'
+                    ? 'Elaborar Nova Versão do Plano'
+                    : isCurrentPlanPublished
+                    ? `Editar Plano em Vigor: "${planTitle}"`
+                    : `Editar Versão: "${planTitle}"`}
+                </h2>
+                <p className="text-xs text-[#71808A]">
+                  Personalize as refeições e alimentos ou carregue um dos seus modelos base.
+                </p>
+              </div>
 
-          {/* Meals List Builder */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-semibold text-[#26343B]">
-                Refeições e Horários ({meals.length} refeições)
-              </label>
+              {/* Quick Base Template & Publish Actions */}
+              <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+                <button
+                  type="button"
+                  onClick={() => setIsTemplatePickerOpen(true)}
+                  className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2 bg-gradient-to-r from-[#F0F6F9] to-white hover:from-[#E2EEF5] whitespace-nowrap"
+                  title="Preencher usando um modelo base"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-[#7897A8]" />
+                  <span>Usar Modelo Base</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsSaveAsTemplateOpen(true)}
+                  className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2 whitespace-nowrap"
+                  title="Salvar este plano como modelo na sua biblioteca"
+                >
+                  <Save className="w-3.5 h-3.5 text-[#71808A]" />
+                  <span>Salvar como Modelo Base</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSavePlan(true)}
+                  disabled={saving}
+                  className="btn-primary text-xs flex items-center space-x-1.5 px-3.5 py-2 shadow-sm whitespace-nowrap"
+                >
+                  {saving ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5" />
+                  )}
+                  <span>Publicar como Plano em Vigor</span>
+                </button>
+              </div>
             </div>
 
-            {meals.map((meal: any, mIdx: number) => (
-              <div
-                key={mIdx}
-                className="p-4 rounded-xl border border-[#E2E8EE] bg-[#F6F8FA] space-y-3 animate-fade-in transition-all"
-              >
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="text"
-                    placeholder="Nome da refeição (ex: Café da Manhã)"
-                    value={meal.name}
-                    onChange={(e) => {
-                      const copy = [...meals]
-                      copy[mIdx].name = e.target.value
-                      setMeals(copy)
-                    }}
-                    className="flex-1 text-sm font-bold p-2.5 rounded-lg border border-[#E2E8EE] bg-white focus:ring-2 focus:ring-[#7897A8] outline-none transition"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Horário (ex: 08:00)"
-                    value={meal.time}
-                    onChange={(e) => {
-                      const copy = [...meals]
-                      copy[mIdx].time = e.target.value
-                      setMeals(copy)
-                    }}
-                    className="w-24 text-sm p-2.5 rounded-lg border border-[#E2E8EE] bg-white text-center focus:ring-2 focus:ring-[#7897A8] outline-none transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeMeal(mIdx)}
-                    className="p-2 text-[#71808A] hover:text-[#D94949] hover:bg-[#FFF5F5] rounded-lg transition"
-                    title="Excluir refeição"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Items */}
-                <div className="space-y-2 pl-2">
-                  {meal.items.map((item: any, iIdx: number) => (
-                    <div key={iIdx} className="flex items-center space-x-2 animate-fade-in">
-                      <input
-                        type="text"
-                        placeholder="Alimento (ex: Ovos mexidos)"
-                        value={item.foodName}
-                        onChange={(e) => {
-                          const copy = [...meals]
-                          copy[mIdx].items[iIdx].foodName = e.target.value
-                          setMeals(copy)
-                        }}
-                        className="flex-1 text-xs p-2 rounded-lg border border-[#E2E8EE] bg-white focus:ring-2 focus:ring-[#7897A8] outline-none transition"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Qtd"
-                        value={item.quantity}
-                        onChange={(e) => {
-                          const copy = [...meals]
-                          copy[mIdx].items[iIdx].quantity = e.target.value
-                          setMeals(copy)
-                        }}
-                        className="w-16 text-xs p-2 rounded-lg border border-[#E2E8EE] bg-white text-center focus:ring-2 focus:ring-[#7897A8] outline-none transition"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Unid (ex: g, unid)"
-                        value={item.unit}
-                        onChange={(e) => {
-                          const copy = [...meals]
-                          copy[mIdx].items[iIdx].unit = e.target.value
-                          setMeals(copy)
-                        }}
-                        className="w-20 text-xs p-2 rounded-lg border border-[#E2E8EE] bg-white text-center focus:ring-2 focus:ring-[#7897A8] outline-none transition"
-                      />
-                      {meal.items.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeMealItem(mIdx, iIdx)}
-                          className="text-[#71808A] hover:text-[#D94949] p-1 transition"
-                          title="Remover item"
-                        >
-                          ✕
-                        </button>
-                      )}
+            {/* Title Input & Warnings */}
+            <div className="space-y-4">
+              {/* Yellow Warning: ONLY shown BEFORE publishing when modified from a base template */}
+              {sourceTemplate && !isCurrentPlanPublished && isModifiedFromTemplate && (
+                <div className="p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs transition-all animate-fade-in bg-amber-50/90 border-amber-200 text-amber-900">
+                  <div className="flex items-center space-x-2.5">
+                    <Sparkles className="w-4 h-4 shrink-0 text-amber-600" />
+                    <div>
+                      <span className="font-bold block">
+                        Modelo Base Modificado: &quot;{sourceTemplate.title.replace(/\s*\(Personalizado\)$/i, '').trim()}&quot;
+                      </span>
+                      <p className="text-[11px] opacity-80 mt-0.5">
+                        Refeições alteradas em relação ao modelo base salvo. O plano receberá &quot;(Personalizado)&quot; ao publicar.
+                      </p>
                     </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => addMealItem(mIdx)}
-                    className="text-xs font-semibold text-[#7897A8] hover:text-[#26343B] flex items-center space-x-1 pt-1 transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Adicionar Alimento</span>
-                  </button>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full shrink-0 self-start sm:self-center bg-amber-200/80 text-amber-900">
+                    Personalizado (Modificado)
+                  </span>
                 </div>
-              </div>
-            ))}
+              )}
 
-            <button
-              type="button"
-              onClick={addMeal}
-              className="btn-secondary text-xs flex items-center space-x-1.5 w-full justify-center py-3 border-dashed hover:border-solid hover:bg-white transition"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Adicionar Nova Refeição ao Plano</span>
-            </button>
+              <div>
+                <label className="block text-xs font-semibold text-[#26343B] mb-1">
+                  Nome do Plano Alimentar
+                </label>
+                <input
+                  type="text"
+                  value={planTitle}
+                  onChange={(e) => setPlanTitle(e.target.value)}
+                  placeholder="Ex: Protocolo Hipertrofia Fase 2"
+                  className="w-full text-sm font-semibold p-2.5 rounded-xl border border-[#E2E8EE] focus:ring-2 focus:ring-[#7897A8] outline-none transition"
+                />
+              </div>
+
+              {/* Meals List Builder */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-[#26343B]">
+                    Refeições e Horários ({meals.length} refeições)
+                  </label>
+                </div>
+
+                {meals.map((meal: any, mIdx: number) => (
+                  <div
+                    key={mIdx}
+                    className="p-4 rounded-xl border border-[#E2E8EE] bg-[#F6F8FA] space-y-3 animate-fade-in transition-all"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="text"
+                        placeholder="Nome da refeição (ex: Café da Manhã)"
+                        value={meal.name}
+                        onChange={(e) => {
+                          const copy = [...meals]
+                          copy[mIdx].name = e.target.value
+                          setMeals(copy)
+                        }}
+                        className="flex-1 text-sm font-bold p-2.5 rounded-lg border border-[#E2E8EE] bg-white focus:ring-2 focus:ring-[#7897A8] outline-none transition"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Horário (ex: 08:00)"
+                        value={meal.time}
+                        onChange={(e) => {
+                          const copy = [...meals]
+                          copy[mIdx].time = e.target.value
+                          setMeals(copy)
+                        }}
+                        className="w-24 text-sm p-2.5 rounded-lg border border-[#E2E8EE] bg-white text-center focus:ring-2 focus:ring-[#7897A8] outline-none transition"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeMeal(mIdx)}
+                        className="p-2 text-[#71808A] hover:text-[#D94949] hover:bg-[#FFF5F5] rounded-lg transition"
+                        title="Excluir refeição"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Items */}
+                    <div className="space-y-2 pl-2">
+                      {meal.items.map((item: any, iIdx: number) => (
+                        <div key={iIdx} className="flex items-center space-x-2 animate-fade-in">
+                          <input
+                            type="text"
+                            placeholder="Alimento (ex: Ovos mexidos)"
+                            value={item.foodName}
+                            onChange={(e) => {
+                              const copy = [...meals]
+                              copy[mIdx].items[iIdx].foodName = e.target.value
+                              setMeals(copy)
+                            }}
+                            className="flex-1 text-xs p-2 rounded-lg border border-[#E2E8EE] bg-white focus:ring-2 focus:ring-[#7897A8] outline-none transition"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Qtd"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const copy = [...meals]
+                              copy[mIdx].items[iIdx].quantity = e.target.value
+                              setMeals(copy)
+                            }}
+                            className="w-16 text-xs p-2 rounded-lg border border-[#E2E8EE] bg-white text-center focus:ring-2 focus:ring-[#7897A8] outline-none transition"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Unid (ex: g, unid)"
+                            value={item.unit}
+                            onChange={(e) => {
+                              const copy = [...meals]
+                              copy[mIdx].items[iIdx].unit = e.target.value
+                              setMeals(copy)
+                            }}
+                            className="w-20 text-xs p-2 rounded-lg border border-[#E2E8EE] bg-white text-center focus:ring-2 focus:ring-[#7897A8] outline-none transition"
+                          />
+                          {meal.items.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeMealItem(mIdx, iIdx)}
+                              className="text-[#71808A] hover:text-[#D94949] p-1 transition"
+                              title="Remover item"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => addMealItem(mIdx)}
+                        className="text-xs font-semibold text-[#7897A8] hover:text-[#26343B] flex items-center space-x-1 pt-1 transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Adicionar Alimento</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={addMeal}
+                  className="btn-secondary text-xs flex items-center space-x-1.5 w-full justify-center py-3 border-dashed hover:border-solid hover:bg-white transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Adicionar Nova Refeição ao Plano</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Modals */}
       <TemplatePickerModal
