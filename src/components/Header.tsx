@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { Activity, Users, FileText, UserCheck, RefreshCw, Bell, Settings, Loader2, Camera, Shield, User as UserIcon, LogOut } from 'lucide-react'
 import { Logo } from './Logo'
+import { useToast } from '@/components/ui/ToastContext'
 
 interface HeaderProps {
   currentUser?: {
@@ -19,6 +20,7 @@ interface HeaderProps {
 export function Header({ currentUser }: HeaderProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const toast = useToast()
   
   const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'profile' | 'security'>('profile')
@@ -77,12 +79,19 @@ export function Header({ currentUser }: HeaderProps) {
       })
       if (res.ok) {
         setProfileMessage('Perfil atualizado com sucesso!')
+        toast.success('Perfil atualizado!', 'Suas alterações cadastrais foram salvas.')
         router.refresh()
+        setTimeout(() => setIsProfileOpen(false), 1200)
       } else {
-        setProfileMessage('Erro ao atualizar perfil')
+        const err = await res.json()
+        const msg = err.error || 'Erro ao atualizar perfil'
+        setProfileMessage(msg)
+        toast.error('Erro ao atualizar perfil', msg)
       }
-    } catch (err) {
-      setProfileMessage('Erro de conexão')
+    } catch {
+      const msg = 'Erro de conexão'
+      setProfileMessage(msg)
+      toast.error('Erro de conexão', 'Não foi possível salvar o perfil.')
     } finally {
       setLoadingProfile(false)
     }
@@ -104,15 +113,20 @@ export function Header({ currentUser }: HeaderProps) {
       
       if (res.ok) {
         setPwdSuccess('Senha alterada com sucesso!')
+        toast.success('Senha Alterada!', 'Sua nova credencial de acesso já está em vigor.')
         setCurrentPassword('')
         setNewPassword('')
         setIsForcePassword(false)
-        setTimeout(() => setIsProfileOpen(false), 2000)
+        setTimeout(() => setIsProfileOpen(false), 1200)
       } else {
-        setPwdError(data.error || 'Erro ao alterar senha')
+        const msg = data.error || 'Erro ao alterar senha'
+        setPwdError(msg)
+        toast.error('Não foi possível alterar senha', msg)
       }
-    } catch (err) {
-      setPwdError('Erro de conexão')
+    } catch {
+      const msg = 'Erro de conexão'
+      setPwdError(msg)
+      toast.error('Erro de conexão', 'Verifique sua conexão e tente novamente.')
     } finally {
       setLoadingPwd(false)
     }
@@ -181,8 +195,8 @@ export function Header({ currentUser }: HeaderProps) {
 
       {/* Profile Modal */}
       {isProfileOpen && (
-        <div className="fixed inset-0 bg-[#262D31]/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 bg-[#262D31]/30 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in transition-all">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] animate-scale-in border border-[#E2E8EE]">
             {/* Header */}
             <div className="bg-[var(--surface)] border-b border-[var(--border-light)] p-5 flex items-center justify-between">
               <h3 className="font-bold text-lg text-[var(--text-main)]">Configurações da Conta</h3>

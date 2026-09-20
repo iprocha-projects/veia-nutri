@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Send, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { useToast } from '@/components/ui/ToastContext'
+import { Plus, Send, Trash2, Loader2, Sparkles } from 'lucide-react'
 
 interface MealPlanTabProps {
   clientId: string
@@ -11,6 +12,7 @@ interface MealPlanTabProps {
 
 export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
   const router = useRouter()
+  const toast = useToast()
   const [planTitle, setPlanTitle] = useState(activePlan?.title || 'Plano Alimentar Personalizado')
   const initialMeals = activePlan?.meals?.length > 0
     ? activePlan.meals.map((m: any) => ({
@@ -35,7 +37,6 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
 
   const [meals, setMeals] = useState(initialMeals)
   const [saving, setSaving] = useState(false)
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   const addMeal = () => {
     setMeals([
@@ -47,6 +48,13 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
         items: [{ foodName: '', quantity: '1', unit: 'porção', notes: '' }],
       },
     ])
+    toast.info('Nova refeição adicionada ao plano', 'Preencha o nome e os alimentos da refeição.')
+  }
+
+  const removeMeal = (index: number) => {
+    const updated = meals.filter((_: any, i: number) => i !== index)
+    setMeals(updated)
+    toast.info('Refeição removida do rascunho')
   }
 
   const addMealItem = (mealIndex: number) => {
@@ -55,9 +63,14 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
     setMeals(updated)
   }
 
+  const removeMealItem = (mealIndex: number, itemIndex: number) => {
+    const updated = [...meals]
+    updated[mealIndex].items = updated[mealIndex].items.filter((_: any, i: number) => i !== itemIndex)
+    setMeals(updated)
+  }
+
   const handleSavePlan = async (publish: boolean) => {
     setSaving(true)
-    setFeedback(null)
     try {
       const res = await fetch('/api/meal-plans', {
         method: 'POST',
@@ -71,37 +84,25 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
       })
 
       if (res.ok) {
-        setFeedback({
-          type: 'success',
-          message: publish ? 'Plano publicado com sucesso!' : 'Rascunho salvo com sucesso!',
-        })
+        if (publish) {
+          toast.success('Plano alimentar publicado com sucesso!', 'Uma nova versão foi gerada e já está disponível para o paciente.')
+        } else {
+          toast.success('Rascunho salvo com sucesso!', 'Você pode continuar editando este plano a qualquer momento.')
+        }
         router.refresh()
       } else {
         const err = await res.json()
-        setFeedback({ type: 'error', message: err.error || 'Erro ao salvar plano alimentar.' })
+        toast.error('Erro ao salvar plano', err.error || 'Verifique as informações preenchidas.')
       }
-    } catch (e) {
-      setFeedback({ type: 'error', message: 'Erro de conexão ao servidor.' })
+    } catch {
+      toast.error('Erro de conexão', 'Não foi possível se comunicar com o servidor.')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="space-y-6">
-      {feedback && (
-        <div
-          className={`p-3.5 rounded-lg text-xs flex items-center space-x-2 ${
-            feedback.type === 'success'
-              ? 'bg-[#F0F8F5] border border-[#D2EBDC] text-[#4A8C6F]'
-              : 'bg-[#FFF5F5] border border-[#FFD8D8] text-[#D94949]'
-          }`}
-        >
-          {feedback.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-          <span>{feedback.message}</span>
-        </div>
-      )}
-
+    <div className="space-y-6 animate-fade-in">
       <div className="card-clinical p-6 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -124,7 +125,7 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
               disabled={saving}
               className="btn-primary text-xs flex items-center space-x-1.5"
             >
-              <Send className="w-3.5 h-3.5" />
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               <span>{saving ? 'Publicando...' : 'Publicar Nova Versão'}</span>
             </button>
           </div>
@@ -137,7 +138,7 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
               type="text"
               value={planTitle}
               onChange={(e) => setPlanTitle(e.target.value)}
-              className="w-full text-sm p-2.5 rounded-lg border border-[#E2E8EE] focus:ring-2 focus:ring-[#7897A8] outline-none"
+              className="w-full text-sm p-2.5 rounded-lg border border-[#E2E8EE] focus:ring-2 focus:ring-[#7897A8] outline-none transition"
             />
           </div>
 
@@ -145,7 +146,10 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
           <div className="space-y-4">
             <label className="block text-xs font-semibold text-[#26343B]">Refeições e Horários</label>
             {meals.map((meal: any, mIdx: number) => (
-              <div key={mIdx} className="p-4 rounded-lg border border-[#E2E8EE] bg-[#F6F8FA] space-y-3">
+              <div
+                key={mIdx}
+                className="p-4 rounded-xl border border-[#E2E8EE] bg-[#F6F8FA] space-y-3 animate-fade-in transition-all"
+              >
                 <div className="flex items-center space-x-3">
                   <input
                     type="text"
@@ -156,7 +160,7 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
                       copy[mIdx].name = e.target.value
                       setMeals(copy)
                     }}
-                    className="flex-1 text-sm font-bold p-2 rounded-lg border border-[#E2E8EE]"
+                    className="flex-1 text-sm font-bold p-2.5 rounded-lg border border-[#E2E8EE] bg-white focus:ring-2 focus:ring-[#7897A8] outline-none transition"
                   />
                   <input
                     type="text"
@@ -167,14 +171,22 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
                       copy[mIdx].time = e.target.value
                       setMeals(copy)
                     }}
-                    className="w-24 text-sm p-2 rounded-lg border border-[#E2E8EE] text-center"
+                    className="w-24 text-sm p-2.5 rounded-lg border border-[#E2E8EE] bg-white text-center focus:ring-2 focus:ring-[#7897A8] outline-none transition"
                   />
+                  <button
+                    type="button"
+                    onClick={() => removeMeal(mIdx)}
+                    className="p-2 text-[#71808A] hover:text-[#D94949] hover:bg-[#FFF5F5] rounded-lg transition"
+                    title="Excluir refeição"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
 
                 {/* Items */}
                 <div className="space-y-2 pl-2">
                   {meal.items.map((item: any, iIdx: number) => (
-                    <div key={iIdx} className="flex items-center space-x-2">
+                    <div key={iIdx} className="flex items-center space-x-2 animate-fade-in">
                       <input
                         type="text"
                         placeholder="Alimento (ex: Ovos mexidos)"
@@ -184,7 +196,7 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
                           copy[mIdx].items[iIdx].foodName = e.target.value
                           setMeals(copy)
                         }}
-                        className="flex-1 text-xs p-2 rounded-lg border border-[#E2E8EE]"
+                        className="flex-1 text-xs p-2 rounded-lg border border-[#E2E8EE] bg-white focus:ring-2 focus:ring-[#7897A8] outline-none transition"
                       />
                       <input
                         type="text"
@@ -195,7 +207,7 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
                           copy[mIdx].items[iIdx].quantity = e.target.value
                           setMeals(copy)
                         }}
-                        className="w-16 text-xs p-2 rounded-lg border border-[#E2E8EE]"
+                        className="w-16 text-xs p-2 rounded-lg border border-[#E2E8EE] bg-white text-center focus:ring-2 focus:ring-[#7897A8] outline-none transition"
                       />
                       <input
                         type="text"
@@ -206,16 +218,26 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
                           copy[mIdx].items[iIdx].unit = e.target.value
                           setMeals(copy)
                         }}
-                        className="w-20 text-xs p-2 rounded-lg border border-[#E2E8EE]"
+                        className="w-20 text-xs p-2 rounded-lg border border-[#E2E8EE] bg-white text-center focus:ring-2 focus:ring-[#7897A8] outline-none transition"
                       />
+                      {meal.items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeMealItem(mIdx, iIdx)}
+                          className="text-[#71808A] hover:text-[#D94949] p-1 transition"
+                          title="Remover item"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
                   ))}
                   <button
                     type="button"
                     onClick={() => addMealItem(mIdx)}
-                    className="text-xs font-semibold text-[#7897A8] hover:underline flex items-center space-x-1 pt-1"
+                    className="text-xs font-semibold text-[#7897A8] hover:text-[#26343B] flex items-center space-x-1 pt-1 transition"
                   >
-                    <Plus className="w-3 h-3" />
+                    <Plus className="w-3.5 h-3.5" />
                     <span>Adicionar Alimento</span>
                   </button>
                 </div>
@@ -225,7 +247,7 @@ export function MealPlanTab({ clientId, activePlan }: MealPlanTabProps) {
             <button
               type="button"
               onClick={addMeal}
-              className="btn-secondary text-xs flex items-center space-x-1 w-full justify-center py-2.5"
+              className="btn-secondary text-xs flex items-center space-x-1.5 w-full justify-center py-3 border-dashed hover:border-solid hover:bg-white transition"
             >
               <Plus className="w-4 h-4" />
               <span>Adicionar Nova Refeição ao Plano</span>

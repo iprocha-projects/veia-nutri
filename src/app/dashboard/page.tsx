@@ -76,7 +76,7 @@ export default async function DashboardPage() {
  <div className="min-h-screen bg-[#F6F8FA]">
  <Header currentUser={professional?.user as any} />
 
- <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+ <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
  {/* Top Header & Greeting */}
  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
  <div>
@@ -91,7 +91,7 @@ export default async function DashboardPage() {
  <div className="flex items-center space-x-3">
  <Link
  href="/dashboard/clients/new"
- className="btn-primary flex items-center space-x-2 text-sm"
+ className="btn-primary flex items-center space-x-2 text-sm shadow-sm"
  >
  <Plus className="w-4 h-4" />
  <span>Novo Paciente</span>
@@ -102,7 +102,7 @@ export default async function DashboardPage() {
  {/* 4 Cards Section */}
  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
  {/* Card 1: Active Clients */}
- <div className="card-clinical p-5">
+ <div className="card-clinical-interactive p-5">
  <div className="flex items-center justify-between">
  <span className="text-xs font-semibold uppercase tracking-wider text-[#71808A]">Clientes Ativos</span>
  <div className="w-9 h-9 rounded-lg bg-[#F0F4F7] text-[#7897A8] flex items-center justify-center">

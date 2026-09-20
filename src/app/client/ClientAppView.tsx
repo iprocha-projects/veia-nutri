@@ -24,8 +24,11 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+import { useToast } from '@/components/ui/ToastContext'
+
 export function ClientAppView({ client }: { client: any }) {
   const router = useRouter()
+  const toast = useToast()
   const [activeTab, setActiveTab] = useState<'plan' | 'log' | 'measurements' | 'checkin' | 'evolution' | 'goals'>('plan')
 
   // Feedback notifications
@@ -78,16 +81,21 @@ export function ClientAppView({ client }: { client: any }) {
       const res = await fetch('/api/logs', { method: 'POST', body: formData })
       if (res.ok) {
         showFeedback('success', 'Refeição registrada com sucesso!')
+        toast.success('Refeição Registrada!', 'Seu nutricionista foi notificado sobre a refeição enviada.')
         setSelectedMealId('')
         setLogNotes('')
         setLogPhoto(null)
         router.refresh()
       } else {
         const err = await res.json()
-        showFeedback('error', err.error || 'Erro ao registrar refeição.')
+        const msg = err.error || 'Erro ao registrar refeição.'
+        showFeedback('error', msg)
+        toast.error('Não foi possível salvar', msg)
       }
-    } catch (e) {
-      showFeedback('error', 'Erro de conexão ao servidor.')
+    } catch {
+      const msg = 'Erro de conexão ao servidor.'
+      showFeedback('error', msg)
+      toast.error('Erro de conexão', 'Verifique sua internet e tente novamente.')
     } finally {
       setSubmittingLog(false)
     }
@@ -105,15 +113,20 @@ export function ClientAppView({ client }: { client: any }) {
       })
       if (res.ok) {
         showFeedback('success', 'Peso registrado com sucesso!')
+        toast.success('Medição Salva!', 'Sua evolução de peso foi atualizada nos gráficos.')
         setWeightKg('')
         setWaistCm('')
         router.refresh()
       } else {
         const err = await res.json()
-        showFeedback('error', err.error || 'Erro ao registrar peso.')
+        const msg = err.error || 'Erro ao registrar peso.'
+        showFeedback('error', msg)
+        toast.error('Erro ao registrar peso', msg)
       }
-    } catch (e) {
-      showFeedback('error', 'Erro de conexão ao servidor.')
+    } catch {
+      const msg = 'Erro de conexão ao servidor.'
+      showFeedback('error', msg)
+      toast.error('Erro de conexão', 'Verifique sua internet e tente novamente.')
     } finally {
       setSubmittingMeasurement(false)
     }
@@ -137,14 +150,19 @@ export function ClientAppView({ client }: { client: any }) {
       })
       if (res.ok) {
         showFeedback('success', 'Check-in enviado com sucesso ao seu nutricionista!')
+        toast.success('Check-in Enviado!', 'Obrigado por atualizar seu nutricionista sobre a semana!')
         setCheckinNotes('')
         router.refresh()
       } else {
         const err = await res.json()
-        showFeedback('error', err.error || 'Erro ao enviar check-in.')
+        const msg = err.error || 'Erro ao enviar check-in.'
+        showFeedback('error', msg)
+        toast.error('Erro ao enviar check-in', msg)
       }
-    } catch (e) {
-      showFeedback('error', 'Erro de conexão ao servidor.')
+    } catch {
+      const msg = 'Erro de conexão ao servidor.'
+      showFeedback('error', msg)
+      toast.error('Erro de conexão', 'Verifique sua internet e tente novamente.')
     } finally {
       setSubmittingCheckin(false)
     }
@@ -164,14 +182,19 @@ export function ClientAppView({ client }: { client: any }) {
       const res = await fetch('/api/photos', { method: 'POST', body: formData })
       if (res.ok) {
         showFeedback('success', 'Foto de evolução enviada com sucesso!')
+        toast.success('Foto Enviada com Sucesso!', 'Sua foto foi gravada com segurança na sua galeria privada.')
         setProgressPhotoFile(null)
         router.refresh()
       } else {
         const err = await res.json()
-        showFeedback('error', err.error || 'Erro ao enviar foto.')
+        const msg = err.error || 'Erro ao enviar foto.'
+        showFeedback('error', msg)
+        toast.error('Erro ao enviar foto', msg)
       }
-    } catch (e) {
-      showFeedback('error', 'Erro de conexão ao servidor.')
+    } catch {
+      const msg = 'Erro de conexão ao servidor.'
+      showFeedback('error', msg)
+      toast.error('Erro de conexão', 'Verifique sua internet e tente novamente.')
     } finally {
       setSubmittingPhoto(false)
     }
@@ -245,8 +268,9 @@ export function ClientAppView({ client }: { client: any }) {
         })}
       </div>
 
-      {/* TAB 1: MEAL PLAN */}
-      {activeTab === 'plan' && (
+      <div key={activeTab} className="animate-fade-in transition-all">
+        {/* TAB 1: MEAL PLAN */}
+        {activeTab === 'plan' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-[#26343B]">Plano Alimentar Vigente</h2>
@@ -587,6 +611,7 @@ export function ClientAppView({ client }: { client: any }) {
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }
