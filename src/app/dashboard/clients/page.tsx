@@ -85,7 +85,7 @@ export default async function ClientsPage() {
           ) : (
             <div className="divide-y divide-[#E2E8EE]">
               {clients.map((client) => {
-                const latestPlan = client.mealPlans[0]
+                const activePlan = client.mealPlans.find((p) => p.status === 'PUBLISHED') || client.mealPlans[0]
                 const latestMeasurement = client.measurements[0]
                 const lastLog = client.mealLogs[0]
 
@@ -115,7 +115,7 @@ export default async function ClientsPage() {
                           <span>
                             Plano:{' '}
                             <strong className="text-[#26343B]">
-                              {latestPlan ? `v${latestPlan.version} (${latestPlan.status})` : 'Sem plano'}
+                              {activePlan ? activePlan.title : 'Sem plano'}
                             </strong>
                           </span>
                           <span>•</span>
