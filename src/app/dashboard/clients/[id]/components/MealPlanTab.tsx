@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/ToastContext'
 import {
@@ -9,12 +9,9 @@ import {
   Trash2,
   Loader2,
   Sparkles,
-  CheckCircle2,
   History,
-  Copy,
   Save,
   Check,
-  Calendar,
   Layers,
   ChevronDown,
 } from 'lucide-react'
@@ -30,17 +27,45 @@ interface MealPlanTabProps {
 export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTabProps) {
   const router = useRouter()
   const toast = useToast()
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Find the published (in vigor) plan or the newest plan
+  // 1. Identify published (in vigor) plan
   const publishedPlan = mealPlans.find((p) => p.status === 'PUBLISHED') || activePlan
-  const allPlans = mealPlans.length > 0 ? mealPlans : activePlan ? [activePlan] : []
+
+  // 2. Deduplicate plans so each distinct plan appears only ONCE!
+  // Exclude duplicate titles of the published plan and deduplicate older drafts
+  const seenTitles = new Set<string>()
+  if (publishedPlan?.title) {
+    seenTitles.add(publishedPlan.title.trim().toLowerCase())
+  }
+
+  const uniqueHistoricalPlans: any[] = []
+  for (const plan of mealPlans) {
+    if (publishedPlan && plan.id === publishedPlan.id) continue
+    const normTitle = plan.title?.trim().toLowerCase() || ''
+    if (!seenTitles.has(normTitle)) {
+      seenTitles.add(normTitle)
+      uniqueHistoricalPlans.push(plan)
+    }
+  }
+
+  // Combined unique list for the dropdown
+  const displayPlans = publishedPlan
+    ? [publishedPlan, ...uniqueHistoricalPlans]
+    : uniqueHistoricalPlans
+
+  // Dropdown open/close state
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
 
   // Currently inspected plan ID in the version manager
   const [selectedPlanId, setSelectedPlanId] = useState<string>(
-    publishedPlan?.id || allPlans[0]?.id || 'new'
+    publishedPlan?.id || displayPlans[0]?.id || 'new'
   )
 
-  const currentPlan = allPlans.find((p) => p.id === selectedPlanId) || publishedPlan
+  const currentPlan =
+    selectedPlanId === 'new'
+      ? null
+      : displayPlans.find((p) => p.id === selectedPlanId) || publishedPlan
 
   // Plan Form State
   const [planTitle, setPlanTitle] = useState(
@@ -85,9 +110,26 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
   const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false)
   const [isSaveAsTemplateOpen, setIsSaveAsTemplateOpen] = useState(false)
 
+  // Close custom dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false)
+      }
+    }
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isDropdownOpen])
+
   // Sync state when selected plan changes
   useEffect(() => {
-    if (currentPlan) {
+    if (selectedPlanId === 'new') {
+      // Keep existing draft or reset if needed
+    } else if (currentPlan) {
       setPlanTitle(currentPlan.title)
       setMeals(parseMealsFromPlan(currentPlan))
     }
@@ -128,7 +170,7 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
     setMeals(updated)
   }
 
-  // Apply template from library
+  // Apply template from library -> Transforms into an independent plan with "(Personalizado)"
   const handleApplyTemplate = (template: any) => {
     if (Array.isArray(template.meals) && template.meals.length > 0) {
       setMeals(
@@ -144,10 +186,16 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
           })),
         }))
       )
-      setPlanTitle(template.title)
+
+      // Clean existing (Personalizado) if any, and append automatically
+      const cleanBase = template.title.replace(/\s*\(Personalizado\)$/i, '').trim()
+      const customizedTitle = `${cleanBase} (Personalizado)`
+      setPlanTitle(customizedTitle)
+      setSelectedPlanId('new')
+
       toast.success(
         'Modelo Base Aplicado!',
-        'Todas as refeições foram preenchidas. Você pode modificar qualquer alimento ou porção livremente.'
+        `O plano agora é independente para este paciente e foi nomeado como "${customizedTitle}".`
       )
     }
   }
@@ -160,6 +208,7 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          planId: selectedPlanId !== 'new' ? selectedPlanId : undefined,
           clientId,
           title: planTitle,
           meals,
@@ -170,16 +219,21 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
       if (res.ok) {
         if (publish) {
           toast.success(
-            'Plano em Vigor Atualizado!',
-            'Esta versão agora é a dieta oficial do paciente e ele foi notificado.'
+            'Plano em Vigor Publicado!',
+            'Esta versão agora é a dieta oficial do paciente. Atualizando a página...'
           )
+          setTimeout(() => {
+            window.location.reload()
+          }, 600)
         } else {
           toast.success(
-            'Rascunho Salvo!',
-            'Você pode continuar ajustando este plano antes de publicá-lo para o paciente.'
+            'Plano Salvo com Sucesso!',
+            'As alterações foram salvas. Atualizando a página...'
           )
+          setTimeout(() => {
+            window.location.reload()
+          }, 600)
         }
-        router.refresh()
       } else {
         const err = await res.json()
         toast.error('Erro ao salvar plano', err.error || 'Verifique as informações.')
@@ -204,9 +258,11 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
       if (res.ok) {
         toast.success(
           'Plano Definido como Vigente!',
-          `A versão "${currentPlan.title}" agora é a oficial para este paciente.`
+          `A versão "${currentPlan.title}" agora é a oficial para este paciente. Atualizando...`
         )
-        router.refresh()
+        setTimeout(() => {
+          window.location.reload()
+        }, 600)
       } else {
         const err = await res.json()
         toast.error('Erro ao ativar versão', err.error || 'Tente novamente.')
@@ -220,7 +276,8 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
 
   // Create new draft based on current plan
   const handleStartNewVersionDraft = () => {
-    setPlanTitle(`${planTitle} (Nova Versão)`)
+    const base = planTitle.replace(/\s*\(Nova Versão\)$/i, '').trim()
+    setPlanTitle(`${base} (Nova Versão)`)
     setSelectedPlanId('new')
     toast.info(
       'Novo Rascunho Iniciado',
@@ -246,27 +303,115 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
           </div>
 
           <div className="flex items-center space-x-2">
-            {/* Version Picker Selector */}
-            {allPlans.length > 0 && (
-              <div className="relative">
-                <select
-                  value={selectedPlanId}
-                  onChange={(e) => setSelectedPlanId(e.target.value)}
-                  className="text-xs font-bold py-2 pl-3 pr-8 rounded-xl border border-[#E2E8EE] bg-[#F6F8FA] text-[#26343B] focus:ring-2 focus:ring-[#7897A8] outline-none cursor-pointer appearance-none"
+            {/* Custom Personalized Version Dropdown */}
+            {displayPlans.length > 0 && (
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="flex items-center space-x-2 text-xs font-bold py-2 px-3.5 rounded-xl border border-[#E2E8EE] bg-[#F6F8FA] hover:bg-white hover:border-[#7897A8] text-[#26343B] transition shadow-sm active:scale-98"
                 >
-                  {allPlans.map((plan: any) => {
-                    const isPublished = plan.status === 'PUBLISHED'
-                    const dateStr = new Date(plan.createdAt).toLocaleDateString('pt-BR')
-                    return (
-                      <option key={plan.id} value={plan.id}>
-                        {isPublished ? '● Plano em Vigor (Oficial)' : `Versão de ${dateStr}`} -{' '}
-                        {plan.title}
-                      </option>
-                    )
-                  })}
-                  {selectedPlanId === 'new' && <option value="new">Novo Rascunho em Elaboração</option>}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-[#71808A] absolute right-2.5 top-3 pointer-events-none" />
+                  {selectedPlanId === 'new' ? (
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  ) : currentPlan?.status === 'PUBLISHED' ? (
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-slate-400" />
+                  )}
+
+                  <span className="max-w-[180px] sm:max-w-[240px] truncate text-left">
+                    {selectedPlanId === 'new'
+                      ? 'Novo Rascunho em Elaboração'
+                      : currentPlan?.status === 'PUBLISHED'
+                      ? `● Plano em Vigor: ${currentPlan.title}`
+                      : `Versão: ${currentPlan?.title || 'Histórico'}`}
+                  </span>
+
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 text-[#71808A] transition-transform ${
+                      isDropdownOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {/* Popover Menu with zero duplicates */}
+                {isDropdownOpen && (
+                  <div className="absolute right-0 mt-1.5 w-72 sm:w-80 bg-white rounded-2xl shadow-xl border border-[#E2E8EE] overflow-hidden z-30 animate-scale-in">
+                    <div className="p-2.5 bg-[#F6F8FA] border-b border-[#E2E8EE] flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-[#71808A] uppercase tracking-wider">
+                        Versões da Dieta
+                      </span>
+                      <span className="text-[10px] font-semibold text-[#7897A8]">
+                        {displayPlans.length} disponível(is)
+                      </span>
+                    </div>
+
+                    <div className="p-1 max-h-60 overflow-y-auto divide-y divide-[#F0F4F7]">
+                      {displayPlans.map((plan) => {
+                        const isPub = plan.status === 'PUBLISHED'
+                        const isSel = selectedPlanId === plan.id
+                        const dateStr = new Date(plan.createdAt).toLocaleDateString('pt-BR')
+
+                        return (
+                          <button
+                            key={plan.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedPlanId(plan.id)
+                              setIsDropdownOpen(false)
+                            }}
+                            className={`w-full text-left p-2.5 rounded-xl flex items-start space-x-2.5 transition ${
+                              isSel
+                                ? 'bg-[#F0F6F9] text-[#26343B]'
+                                : 'hover:bg-[#FAFBFD] text-[#71808A]'
+                            }`}
+                          >
+                            <div className="mt-0.5 shrink-0">
+                              {isPub ? (
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 block animate-pulse mt-1" />
+                              ) : (
+                                <span className="w-2 h-2 rounded-full bg-slate-300 block mt-1" />
+                              )}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <span
+                                  className={`text-xs truncate ${
+                                    isPub
+                                      ? 'font-bold text-emerald-800'
+                                      : 'font-semibold text-[#26343B]'
+                                  }`}
+                                >
+                                  {plan.title}
+                                </span>
+                                {isPub && (
+                                  <span className="text-[9px] font-bold uppercase bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full shrink-0">
+                                    Em Vigor
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-[#71808A] block mt-0.5">
+                                {isPub ? 'Dieta oficial ativa' : `Versão de ${dateStr}`}
+                              </span>
+                            </div>
+
+                            {isSel && (
+                              <Check className="w-4 h-4 text-[#7897A8] shrink-0 mt-0.5" />
+                            )}
+                          </button>
+                        )
+                      })}
+
+                      {selectedPlanId === 'new' && (
+                        <div className="p-2.5 bg-amber-50/70 rounded-xl flex items-center space-x-2 text-xs font-semibold text-amber-900">
+                          <span className="w-2 h-2 rounded-full bg-amber-500" />
+                          <span>Novo Rascunho em Elaboração</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -352,6 +497,21 @@ export function MealPlanTab({ clientId, activePlan, mealPlans = [] }: MealPlanTa
             >
               <Save className="w-3.5 h-3.5 text-[#71808A]" />
               <span>Salvar como Modelo Base</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSavePlan(false)}
+              disabled={saving}
+              className="btn-secondary text-xs flex items-center space-x-1.5 px-3 py-2"
+              title="Salvar alterações sem torná-lo o plano em vigor"
+            >
+              {saving ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5 text-[#71808A]" />
+              )}
+              <span>Salvar Alterações</span>
             </button>
 
             <button

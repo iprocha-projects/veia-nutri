@@ -14,6 +14,7 @@ import {
   X,
   Layers,
   Save,
+  Pencil,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/ToastContext'
 
@@ -38,6 +39,7 @@ export function TemplatesManager({ initialTemplates }: TemplatesManagerProps) {
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [editingTemplate, setEditingTemplate] = useState<any | null>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
@@ -109,7 +111,35 @@ export function TemplatesManager({ initialTemplates }: TemplatesManagerProps) {
     setNewMeals(copy)
   }
 
-  const handleCreateTemplate = async (e: React.FormEvent) => {
+  const handleStartEdit = (template: any) => {
+    setEditingTemplate(template)
+    setNewTitle(template.title)
+    setNewCategory(template.category || 'Hipertrofia')
+    setNewDescription(template.description || '')
+    setNewMeals(
+      Array.isArray(template.meals) && template.meals.length > 0
+        ? template.meals
+        : [
+            {
+              name: 'Café da Manhã',
+              time: '08:00',
+              instructions: '',
+              items: [{ foodName: 'Ovos mexidos', quantity: '2', unit: 'unid', notes: '' }],
+            },
+          ]
+    )
+    setIsCreating(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleCancelForm = () => {
+    setIsCreating(false)
+    setEditingTemplate(null)
+    setNewTitle('')
+    setNewDescription('')
+  }
+
+  const handleSaveTemplate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTitle.trim()) {
       toast.error('Título obrigatório', 'Informe um nome para o modelo base.')
@@ -118,10 +148,12 @@ export function TemplatesManager({ initialTemplates }: TemplatesManagerProps) {
 
     setSaving(true)
     try {
+      const isEditing = Boolean(editingTemplate)
       const res = await fetch('/api/meal-plan-templates', {
-        method: 'POST',
+        method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ...(isEditing ? { id: editingTemplate.id } : {}),
           title: newTitle,
           category: newCategory,
           description: newDescription,
@@ -130,15 +162,21 @@ export function TemplatesManager({ initialTemplates }: TemplatesManagerProps) {
       })
 
       if (res.ok) {
-        const created = await res.json()
-        setTemplates([created, ...templates])
-        setIsCreating(false)
-        setNewTitle('')
-        setNewDescription('')
-        toast.success(
-          'Modelo Base Salvo com Sucesso!',
-          `O modelo "${created.title}" já está disponível para inserção nos pacientes.`
-        )
+        const saved = await res.json()
+        if (isEditing) {
+          setTemplates((prev) => prev.map((t) => (t.id === editingTemplate.id ? saved : t)))
+          toast.success(
+            'Modelo Base Atualizado!',
+            `As alterações em "${saved.title}" foram salvas com sucesso.`
+          )
+        } else {
+          setTemplates([saved, ...templates])
+          toast.success(
+            'Modelo Base Salvo!',
+            `O modelo "${saved.title}" já está disponível para inserção nos pacientes.`
+          )
+        }
+        handleCancelForm()
       } else {
         const err = await res.json()
         toast.error('Erro ao salvar modelo', err.error || 'Tente novamente.')
@@ -196,7 +234,16 @@ export function TemplatesManager({ initialTemplates }: TemplatesManagerProps) {
         <div className="flex items-center space-x-3">
           <button
             type="button"
-            onClick={() => setIsCreating(!isCreating)}
+            onClick={() => {
+              if (isCreating) {
+                handleCancelForm()
+              } else {
+                setEditingTemplate(null)
+                setNewTitle('')
+                setNewDescription('')
+                setIsCreating(true)
+              }
+            }}
             className="btn-primary flex items-center space-x-2 text-xs shadow-sm"
           >
             {isCreating ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
@@ -205,26 +252,30 @@ export function TemplatesManager({ initialTemplates }: TemplatesManagerProps) {
         </div>
       </div>
 
-      {/* New Template Builder (Collapsible / Modal-like) */}
+      {/* New / Edit Template Builder */}
       {isCreating && (
         <div className="card-clinical p-6 bg-white border border-[#E2E8EE] space-y-6 animate-scale-in">
           <div className="border-b border-[#E2E8EE] pb-4 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-[#26343B]">Estruturar Novo Modelo Base</h2>
+              <h2 className="text-base font-bold text-[#26343B]">
+                {editingTemplate ? `Editar Modelo Base: "${editingTemplate.title}"` : 'Estruturar Novo Modelo Base'}
+              </h2>
               <p className="text-xs text-[#71808A]">
-                Configure as refeições e alimentos que compõem este modelo reutilizável.
+                {editingTemplate
+                  ? 'Altere o nome, categoria e refeições deste modelo padrão.'
+                  : 'Configure as refeições e alimentos que compõem este modelo reutilizável.'}
               </p>
             </div>
             <button
               type="button"
-              onClick={() => setIsCreating(false)}
+              onClick={handleCancelForm}
               className="text-xs text-[#71808A] hover:text-[#26343B]"
             >
               Cancelar
             </button>
           </div>
 
-          <form onSubmit={handleCreateTemplate} className="space-y-6">
+          <form onSubmit={handleSaveTemplate} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-[#26343B] mb-1">
@@ -401,7 +452,7 @@ export function TemplatesManager({ initialTemplates }: TemplatesManagerProps) {
             <div className="flex items-center justify-end space-x-3 pt-3 border-t border-[#E2E8EE]">
               <button
                 type="button"
-                onClick={() => setIsCreating(false)}
+                onClick={handleCancelForm}
                 className="px-4 py-2 text-xs font-semibold text-[#71808A] hover:text-[#26343B]"
               >
                 Cancelar
@@ -416,7 +467,13 @@ export function TemplatesManager({ initialTemplates }: TemplatesManagerProps) {
                 ) : (
                   <Save className="w-4 h-4" />
                 )}
-                <span>{saving ? 'Salvando...' : 'Salvar Modelo Base'}</span>
+                <span>
+                  {saving
+                    ? 'Salvando...'
+                    : editingTemplate
+                    ? 'Salvar Alterações do Modelo'
+                    : 'Salvar Modelo Base'}
+                </span>
               </button>
             </div>
           </form>
@@ -498,19 +555,30 @@ export function TemplatesManager({ initialTemplates }: TemplatesManagerProps) {
                       </h3>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteTemplate(template.id, template.title)}
-                      disabled={deletingId === template.id}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 text-[#71808A] hover:text-[#D94949] rounded-lg transition"
-                      title="Excluir modelo base"
-                    >
-                      {deletingId === template.id ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+                    <div className="flex items-center space-x-1">
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(template)}
+                        className="p-1.5 text-[#71808A] hover:text-[#26343B] hover:bg-[#F0F4F7] rounded-lg transition"
+                        title="Editar modelo base"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTemplate(template.id, template.title)}
+                        disabled={deletingId === template.id}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 text-[#71808A] hover:text-[#D94949] hover:bg-[#FFF5F5] rounded-lg transition"
+                        title="Excluir modelo base"
+                      >
+                        {deletingId === template.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {template.description && (
@@ -566,13 +634,24 @@ export function TemplatesManager({ initialTemplates }: TemplatesManagerProps) {
                     )}
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => router.push('/dashboard/clients')}
-                    className="text-xs text-[#7897A8] hover:text-[#26343B] font-semibold"
-                  >
-                    Usar em Paciente →
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => handleStartEdit(template)}
+                      className="text-xs text-[#26343B] hover:text-[#7897A8] flex items-center space-x-1 font-semibold transition"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      <span>Editar</span>
+                    </button>
+                    <span className="text-[#E2E8EE]">•</span>
+                    <button
+                      type="button"
+                      onClick={() => router.push('/dashboard/clients')}
+                      className="text-xs text-[#7897A8] hover:text-[#26343B] font-semibold"
+                    >
+                      Usar em Paciente →
+                    </button>
+                  </div>
                 </div>
               </div>
             )

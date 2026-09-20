@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Sparkles, Loader2, Save, Utensils } from 'lucide-react'
 import { useToast } from '@/components/ui/ToastContext'
 
@@ -27,10 +27,21 @@ export function SaveAsTemplateModal({
   meals,
 }: SaveAsTemplateModalProps) {
   const toast = useToast()
-  const [title, setTitle] = useState(currentTitle || 'Novo Modelo de Dieta Base')
+  const [title, setTitle] = useState(
+    currentTitle?.replace(/\s*\(Personalizado\)$/i, '').trim() || 'Novo Modelo de Dieta Base'
+  )
   const [category, setCategory] = useState('Hipertrofia')
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Sync title whenever modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setTitle(
+        currentTitle?.replace(/\s*\(Personalizado\)$/i, '').trim() || 'Novo Modelo de Dieta Base'
+      )
+    }
+  }, [isOpen, currentTitle])
 
   if (!isOpen) return null
 
